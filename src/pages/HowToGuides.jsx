@@ -41,7 +41,7 @@ export default function HowToGuides({ items, setItems, ownerMode }) {
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-2">
           <BookOpen size={22} className="text-emerald-600" />
-          <h2 className="text-2xl font-bold text-gray-900">How-To Guides</h2>
+          <h2 className="text-2xl font-bold text-gray-900">Playbooks</h2>
         </div>
         {ownerMode && (
           <button
@@ -95,6 +95,7 @@ export default function HowToGuides({ items, setItems, ownerMode }) {
           item={editing}
           categories={ALL_CATEGORIES}
           title="Guide"
+          richText
           onSave={handleSave}
           onClose={() => { setEditing(null); setAdding(false); }}
         />

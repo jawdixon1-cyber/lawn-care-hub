@@ -41,7 +41,14 @@ export default function ViewModal({ item, onClose }) {
           <h2 className="mt-3 text-2xl font-bold text-white">{item.title}</h2>
         </div>
         <div className="p-8 overflow-y-auto">
-          <p className="text-gray-700 leading-relaxed whitespace-pre-line">{item.content}</p>
+          {item.content && item.content.includes('<') ? (
+            <div
+              className="prose prose-sm max-w-none text-gray-700 [&_img]:rounded-lg [&_img]:max-h-64 [&_img]:object-cover"
+              dangerouslySetInnerHTML={{ __html: item.content }}
+            />
+          ) : (
+            <p className="text-gray-700 leading-relaxed whitespace-pre-line">{item.content}</p>
+          )}
         </div>
       </div>
     </div>

@@ -5,8 +5,7 @@ import {
   BookOpen,
   Wrench,
   Users,
-  Lock,
-  Unlock,
+  LogOut,
 } from 'lucide-react';
 
 import {
@@ -16,9 +15,14 @@ import {
   initialEquipment,
   initialIdeas,
   initialPolicies,
+  initialTimeOffRequests,
+  initialOwnerStartChecklist,
+  initialOwnerEndChecklist,
 } from './data';
 
+import NameSelector from './components/NameSelector';
 import Home from './pages/Home';
+import OwnerDashboard from './pages/OwnerDashboard';
 import Standards from './pages/Standards';
 import HowToGuides from './pages/HowToGuides';
 import EquipmentIdeas from './pages/EquipmentIdeas';
@@ -26,33 +30,36 @@ import HRPolicies from './pages/HRPolicies';
 
 const TABS = [
   { id: 'home', label: 'Home', icon: HomeIcon },
+  { id: 'guides', label: 'Playbooks', icon: BookOpen },
   { id: 'standards', label: 'Standards', icon: CheckSquare },
-  { id: 'guides', label: 'How-To', icon: BookOpen },
-  { id: 'equipment', label: 'Equipment', icon: Wrench },
   { id: 'hr', label: 'HR', icon: Users },
+  { id: 'equipment', label: 'Equipment', icon: Wrench },
 ];
 
 function App() {
+  const [currentUser, setCurrentUser] = useState(() => localStorage.getItem('greenteam-user'));
   const [tab, setTab] = useState('home');
-  const [ownerMode, setOwnerMode] = useState(false);
+  const ownerMode = currentUser === 'Jude Wilson';
 
-  const [announcements] = useState(initialAnnouncements);
+  const [announcements, setAnnouncements] = useState(initialAnnouncements);
+  const [ownerTodos, setOwnerTodos] = useState([]);
+  const [ownerStartChecklist, setOwnerStartChecklist] = useState(initialOwnerStartChecklist);
+  const [ownerEndChecklist, setOwnerEndChecklist] = useState(initialOwnerEndChecklist);
   const [standards, setStandards] = useState(initialStandards);
   const [guides, setGuides] = useState(initialGuides);
   const [equipment, setEquipment] = useState(initialEquipment);
   const [ideas, setIdeas] = useState(initialIdeas);
   const [policies, setPolicies] = useState(initialPolicies);
+  const [timeOffRequests, setTimeOffRequests] = useState(initialTimeOffRequests);
 
-  const toggleOwnerMode = () => {
-    if (!ownerMode) {
-      const code = prompt('Enter edit mode password:');
-      if (code === 'admin') {
-        setOwnerMode(true);
-      }
-    } else {
-      setOwnerMode(false);
-    }
+  const handleSwitchUser = () => {
+    localStorage.removeItem('greenteam-user');
+    setCurrentUser(null);
   };
+
+  if (!currentUser) {
+    return <NameSelector onSelect={setCurrentUser} />;
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -86,18 +93,16 @@ function App() {
               })}
             </div>
 
-            <button
-              onClick={toggleOwnerMode}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                ownerMode
-                  ? 'bg-amber-100 text-amber-700 hover:bg-amber-200'
-                  : 'text-gray-400 hover:text-gray-600 hover:bg-gray-50'
-              }`}
-              title={ownerMode ? 'Exit Edit Mode' : 'Enter Edit Mode'}
-            >
-              {ownerMode ? <Unlock size={18} /> : <Lock size={18} />}
-              <span className="hidden sm:inline">{ownerMode ? 'Editing' : 'Edit Mode'}</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-500 hidden sm:inline">{currentUser}</span>
+              <button
+                onClick={handleSwitchUser}
+                className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-50 transition-colors"
+                title="Switch user"
+              >
+                <LogOut size={18} />
+              </button>
+            </div>
           </div>
         </div>
 
@@ -125,7 +130,27 @@ function App() {
 
       {/* Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {tab === 'home' && <Home announcements={announcements} />}
+        {tab === 'home' && (ownerMode ? (
+          <OwnerDashboard
+            announcements={announcements}
+            setAnnouncements={setAnnouncements}
+            timeOffRequests={timeOffRequests}
+            setTimeOffRequests={setTimeOffRequests}
+            equipment={equipment}
+            setEquipment={setEquipment}
+            ideas={ideas}
+            setIdeas={setIdeas}
+            ownerTodos={ownerTodos}
+            setOwnerTodos={setOwnerTodos}
+            ownerStartChecklist={ownerStartChecklist}
+            setOwnerStartChecklist={setOwnerStartChecklist}
+            ownerEndChecklist={ownerEndChecklist}
+            setOwnerEndChecklist={setOwnerEndChecklist}
+            onNavigate={setTab}
+          />
+        ) : (
+          <Home announcements={announcements} onNavigate={setTab} />
+        ))}
         {tab === 'standards' && (
           <Standards items={standards} setItems={setStandards} ownerMode={ownerMode} />
         )}
@@ -139,10 +164,18 @@ function App() {
             ideas={ideas}
             setIdeas={setIdeas}
             ownerMode={ownerMode}
+            currentUser={currentUser}
           />
         )}
         {tab === 'hr' && (
-          <HRPolicies items={policies} setItems={setPolicies} ownerMode={ownerMode} />
+          <HRPolicies
+            items={policies}
+            setItems={setPolicies}
+            timeOffRequests={timeOffRequests}
+            setTimeOffRequests={setTimeOffRequests}
+            ownerMode={ownerMode}
+            currentUser={currentUser}
+          />
         )}
       </main>
     </div>

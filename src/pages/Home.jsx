@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Megaphone, ChevronDown, ClipboardCheck } from 'lucide-react';
+import { Megaphone, ChevronRight, ClipboardCheck, AlertCircle } from 'lucide-react';
+import ChecklistPanel from '../components/ChecklistPanel';
 
 const startOfDayItems = [
   'Review daily route and job schedule',
@@ -21,62 +21,7 @@ const endOfDayItems = [
   'Submit timesheet and mileage',
 ];
 
-function ChecklistPanel({ title, items }) {
-  const [open, setOpen] = useState(false);
-  const [checked, setChecked] = useState(() => Array(items.length).fill(false));
-
-  const completedCount = checked.filter(Boolean).length;
-
-  const toggle = (index) => {
-    setChecked((prev) => prev.map((v, i) => (i === index ? !v : v)));
-  };
-
-  return (
-    <div className="bg-white rounded-2xl shadow-sm border border-gray-100">
-      <button
-        onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center justify-between p-6 cursor-pointer"
-      >
-        <div className="flex items-center gap-3">
-          <span className="font-bold text-gray-900 text-lg">{title}</span>
-          <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700">
-            {completedCount}/{items.length} completed
-          </span>
-        </div>
-        <ChevronDown
-          size={20}
-          className={`text-gray-400 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
-        />
-      </button>
-      {open && (
-        <div className="px-6 pb-6 space-y-3">
-          {items.map((item, i) => (
-            <label
-              key={i}
-              className="flex items-center gap-3 cursor-pointer group"
-            >
-              <input
-                type="checkbox"
-                checked={checked[i]}
-                onChange={() => toggle(i)}
-                className="w-5 h-5 rounded accent-emerald-600 shrink-0"
-              />
-              <span
-                className={`text-sm transition-colors duration-150 ${
-                  checked[i] ? 'line-through text-gray-400' : 'text-gray-700'
-                }`}
-              >
-                {item}
-              </span>
-            </label>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-export default function Home({ announcements }) {
+export default function Home({ announcements, onNavigate }) {
   return (
     <div>
       <div className="bg-gradient-to-r from-emerald-600 to-emerald-800 rounded-2xl p-8 md:p-12 text-white mb-8">
@@ -138,6 +83,31 @@ export default function Home({ announcements }) {
       <div className="grid gap-4 md:grid-cols-2">
         <ChecklistPanel title="Start of Day" items={startOfDayItems} />
         <ChecklistPanel title="End of Day" items={endOfDayItems} />
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2 mt-6">
+        <a
+          href="http://heyjudeslawncare.com/app"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center justify-between rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-600 p-6 text-white hover:opacity-90 transition-opacity"
+        >
+          <div>
+            <h3 className="text-lg font-bold">Open Jobber</h3>
+            <p className="text-sm text-white/80 mt-1">View today's schedule and jobs</p>
+          </div>
+          <ChevronRight size={24} />
+        </a>
+        <button
+          onClick={() => onNavigate('equipment')}
+          className="flex items-center justify-between rounded-2xl bg-gradient-to-r from-orange-500 to-red-500 p-6 text-white text-left hover:opacity-90 transition-opacity cursor-pointer"
+        >
+          <div>
+            <h3 className="text-lg font-bold">Report Issue</h3>
+            <p className="text-sm text-white/80 mt-1">Equipment needs repair</p>
+          </div>
+          <AlertCircle size={24} />
+        </button>
       </div>
     </div>
   );

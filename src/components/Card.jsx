@@ -15,7 +15,7 @@ const categoryColors = {
   'Time Off': 'bg-cyan-100 text-cyan-700',
 };
 
-export default function Card({ item, onClick, onEdit, onDelete, ownerMode }) {
+export default function Card({ item, onClick, onEdit, onDelete, ownerMode, hideCategory }) {
   const colorClass = categoryColors[item.category] || 'bg-gray-100 text-gray-700';
 
   return (
@@ -40,10 +40,12 @@ export default function Card({ item, onClick, onEdit, onDelete, ownerMode }) {
           </button>
         </div>
       )}
-      <span className={`inline-block text-xs font-semibold px-2.5 py-1 rounded-full ${colorClass}`}>
-        {item.category}
-      </span>
-      <h3 className="mt-3 text-lg font-bold text-gray-900">{item.title}</h3>
+      {!hideCategory && (
+        <span className={`inline-block text-xs font-semibold px-2.5 py-1 rounded-full ${colorClass}`}>
+          {item.category}
+        </span>
+      )}
+      <h3 className={`${hideCategory ? '' : 'mt-3 '}text-lg font-bold text-gray-900`}>{item.title}</h3>
       <p className="mt-2 text-sm text-gray-500 line-clamp-3 whitespace-pre-line">{item.content}</p>
     </div>
   );
