@@ -6,8 +6,12 @@ const categoryColors = {
   Conduct: 'bg-purple-100 text-purple-700',
   Professionalism: 'bg-blue-100 text-blue-700',
   'Service Work': 'bg-green-100 text-green-700',
+  'Field Team': 'bg-emerald-100 text-emerald-700',
   'Equipment & Maintenance': 'bg-orange-100 text-orange-700',
   'Equipment Guide': 'bg-orange-100 text-orange-700',
+  Sales: 'bg-purple-100 text-purple-700',
+  Owner: 'bg-blue-100 text-blue-700',
+  Strategy: 'bg-blue-100 text-blue-700',
   'Business Idea': 'bg-sky-100 text-sky-700',
   Hiring: 'bg-indigo-100 text-indigo-700',
   Training: 'bg-teal-100 text-teal-700',
@@ -15,12 +19,18 @@ const categoryColors = {
   'Time Off': 'bg-cyan-100 text-cyan-700',
 };
 
+function getPreviewText(content) {
+  if (!content) return '';
+  const stripped = content.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  return stripped.length > 200 ? stripped.slice(0, 200) + '...' : stripped;
+}
+
 export default function Card({ item, onClick, onEdit, onDelete, ownerMode, hideCategory }) {
-  const colorClass = categoryColors[item.category] || 'bg-gray-100 text-gray-700';
+  const colorClass = categoryColors[item.category] || 'bg-surface-alt text-secondary';
 
   return (
     <div
-      className="group relative bg-white rounded-2xl shadow-sm border border-gray-100 p-6 cursor-pointer
+      className="group relative bg-card rounded-2xl shadow-sm border border-border-subtle p-6 cursor-pointer overflow-hidden
                  hover:shadow-lg hover:scale-[1.02] transition-all duration-200"
       onClick={() => onClick(item)}
     >
@@ -45,8 +55,9 @@ export default function Card({ item, onClick, onEdit, onDelete, ownerMode, hideC
           {item.category}
         </span>
       )}
-      <h3 className={`${hideCategory ? '' : 'mt-3 '}text-lg font-bold text-gray-900`}>{item.title}</h3>
-      <p className="mt-2 text-sm text-gray-500 line-clamp-3 whitespace-pre-line">{item.content}</p>
+      <h3 className={`${hideCategory ? '' : 'mt-3 '}text-lg font-bold text-primary`}>{item.title}</h3>
+      <p className="mt-2 text-sm text-tertiary line-clamp-3">{getPreviewText(item.content)}</p>
+      <p className="mt-2 text-[10px] text-muted">{(JSON.stringify(item).length / 1024).toFixed(1)} KB</p>
     </div>
   );
 }

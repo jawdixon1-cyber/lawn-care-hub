@@ -3,10 +3,18 @@ import { ChevronRight, X, Calendar, Plus, Pencil, Trash2, Search } from 'lucide-
 import ViewModal from '../components/ViewModal';
 import EditModal from '../components/EditModal';
 import { genId } from '../data';
+import { useAppStore } from '../store/AppStoreContext';
+import { useAuth } from '../contexts/AuthContext';
 
 const POLICY_CATEGORIES = ['Compensation', 'Time Off', 'Onboarding', 'Conduct', 'Training', 'Hiring'];
 
-export default function HRPolicies({ items, setItems, timeOffRequests, setTimeOffRequests, ownerMode, currentUser }) {
+export default function HRPolicies() {
+  const { ownerMode, currentUser } = useAuth();
+  const items = useAppStore((s) => s.policies);
+  const setItems = useAppStore((s) => s.setPolicies);
+  const timeOffRequests = useAppStore((s) => s.timeOffRequests);
+  const setTimeOffRequests = useAppStore((s) => s.setTimeOffRequests);
+
   const [viewing, setViewing] = useState(null);
   const [editing, setEditing] = useState(null);
   const [addingPolicy, setAddingPolicy] = useState(false);
@@ -69,12 +77,12 @@ export default function HRPolicies({ items, setItems, timeOffRequests, setTimeOf
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">HR &amp; Policies</h1>
-          <p className="text-gray-500 mt-1">Employee handbook, time off, schedules</p>
+          <h1 className="text-3xl font-bold text-primary">HR &amp; Policies</h1>
+          <p className="text-tertiary mt-1">Employee handbook, time off, schedules</p>
         </div>
         <button
           onClick={() => setRequestingOff(true)}
-          className="inline-flex items-center gap-2 px-5 py-2.5 bg-emerald-600 text-white text-sm font-semibold rounded-xl hover:bg-emerald-700 transition-colors cursor-pointer"
+          className="inline-flex items-center gap-2 px-5 py-2.5 bg-brand text-on-brand text-sm font-semibold rounded-xl hover:bg-brand-hover transition-colors cursor-pointer"
         >
           <Calendar size={16} />
           Request Time Off
@@ -105,11 +113,11 @@ export default function HRPolicies({ items, setItems, timeOffRequests, setTimeOf
 
       {/* Time Off Requests - Owner Only */}
       {isOwner && (
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-8">
-          <h2 className="text-xl font-bold text-gray-900 mb-6">Time Off Requests</h2>
+        <div className="bg-card rounded-2xl shadow-sm border border-border-subtle p-6 mb-8">
+          <h2 className="text-xl font-bold text-primary mb-6">Time Off Requests</h2>
           <div className="space-y-4">
             {timeOffRequests.length === 0 && (
-              <p className="text-gray-400 text-sm">No time off requests yet.</p>
+              <p className="text-muted text-sm">No time off requests yet.</p>
             )}
             {timeOffRequests.map((req) => (
               <div
@@ -124,12 +132,12 @@ export default function HRPolicies({ items, setItems, timeOffRequests, setTimeOf
               >
                 <div className="flex items-start justify-between">
                   <div>
-                    <h3 className="font-bold text-gray-900">{req.name}</h3>
-                    <p className="text-sm text-gray-600 mt-0.5">
+                    <h3 className="font-bold text-primary">{req.name}</h3>
+                    <p className="text-sm text-secondary mt-0.5">
                       {req.startDate} - {req.endDate} ({req.days} day{req.days > 1 ? 's' : ''})
                     </p>
-                    <p className="text-sm text-gray-500 mt-1">Reason: {req.reason}</p>
-                    <p className="text-xs text-gray-400 mt-1">Requested: {req.requestedDate}</p>
+                    <p className="text-sm text-tertiary mt-1">Reason: {req.reason}</p>
+                    <p className="text-xs text-muted mt-1">Requested: {req.requestedDate}</p>
                   </div>
                   <span
                     className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
@@ -147,7 +155,7 @@ export default function HRPolicies({ items, setItems, timeOffRequests, setTimeOf
                   <div className="flex gap-3 mt-4">
                     <button
                       onClick={() => handleApprove(req.id)}
-                      className="flex-1 py-2.5 rounded-lg bg-emerald-600 text-white font-semibold text-sm hover:bg-emerald-700 transition-colors cursor-pointer"
+                      className="flex-1 py-2.5 rounded-lg bg-brand text-on-brand font-semibold text-sm hover:bg-brand-hover transition-colors cursor-pointer"
                     >
                       Approve
                     </button>
@@ -166,27 +174,27 @@ export default function HRPolicies({ items, setItems, timeOffRequests, setTimeOf
       )}
 
       {/* Employee Handbook */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+      <div className="bg-card rounded-2xl shadow-sm border border-border-subtle p-6">
         <div className="flex items-center justify-between mb-1">
-          <h2 className="text-xl font-bold text-gray-900">Employee Handbook</h2>
+          <h2 className="text-xl font-bold text-primary">Employee Handbook</h2>
           {ownerMode && (
             <button
               onClick={() => setAddingPolicy(true)}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 text-white font-medium text-sm hover:bg-emerald-700 transition-colors"
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-brand text-on-brand font-medium text-sm hover:bg-brand-hover transition-colors"
             >
               <Plus size={16} /> Add Policy
             </button>
           )}
         </div>
-        <p className="text-gray-500 text-sm mb-4">Review company policies and procedures</p>
+        <p className="text-tertiary text-sm mb-4">Review company policies and procedures</p>
         <div className="relative mb-6">
-          <Search size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+          <Search size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted" />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search policies..."
-            className="w-full rounded-xl border border-gray-200 bg-white pl-10 pr-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition"
+            className="w-full rounded-xl border border-border-default bg-card pl-10 pr-4 py-2.5 text-sm text-primary placeholder-placeholder-muted focus:ring-2 focus:ring-ring-brand focus:border-border-brand outline-none transition"
           />
         </div>
         {(() => {
@@ -194,17 +202,17 @@ export default function HRPolicies({ items, setItems, timeOffRequests, setTimeOf
           const filtered = q
             ? items.filter((i) => i.title?.toLowerCase().includes(q) || i.summary?.toLowerCase().includes(q))
             : items;
-          if (filtered.length === 0) return <p className="text-gray-400 text-sm">{q ? 'No policies match your search.' : 'No policies yet.'}</p>;
+          if (filtered.length === 0) return <p className="text-muted text-sm">{q ? 'No policies match your search.' : 'No policies yet.'}</p>;
           return (<div className="grid gap-4 md:grid-cols-2">
           {filtered.map((item) => (
             <div
               key={item.id}
-              className="group relative flex items-start justify-between rounded-xl border border-gray-100 p-5 hover:shadow-md hover:border-gray-200 transition-all cursor-pointer"
+              className="group relative flex items-start justify-between rounded-xl border border-border-subtle p-5 hover:shadow-md hover:border-border-default transition-all cursor-pointer"
               onClick={() => setViewing(item)}
             >
               <div>
-                <h3 className="font-bold text-gray-900">{item.title}</h3>
-                <p className="text-sm text-gray-500 mt-1">{item.summary}</p>
+                <h3 className="font-bold text-primary">{item.title}</h3>
+                <p className="text-sm text-tertiary mt-1">{item.summary}</p>
               </div>
               <div className="flex items-center gap-1 shrink-0 ml-2">
                 {ownerMode && (
@@ -223,7 +231,7 @@ export default function HRPolicies({ items, setItems, timeOffRequests, setTimeOf
                     </button>
                   </div>
                 )}
-                <ChevronRight size={20} className="text-gray-300" />
+                <ChevronRight size={20} className="text-muted" />
               </div>
             </div>
           ))}
@@ -250,7 +258,7 @@ export default function HRPolicies({ items, setItems, timeOffRequests, setTimeOf
           onClick={() => setRequestingOff(false)}
         >
           <div
-            className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden flex flex-col"
+            className="bg-card rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="bg-gradient-to-r from-emerald-500 to-emerald-700 px-8 py-6 relative">
@@ -264,56 +272,56 @@ export default function HRPolicies({ items, setItems, timeOffRequests, setTimeOf
             </div>
             <form onSubmit={handleRequestSubmit} className="p-8 space-y-5">
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">Start Date</label>
+                <label className="block text-sm font-semibold text-secondary mb-1">Start Date</label>
                 <input
                   type="date"
                   required
                   value={form.startDate}
                   onChange={(e) => setForm({ ...form, startDate: e.target.value })}
-                  className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-gray-900 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition"
+                  className="w-full rounded-lg border border-border-strong px-4 py-2.5 text-primary focus:ring-2 focus:ring-ring-brand focus:border-border-brand outline-none transition"
                 />
               </div>
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">End Date</label>
+                <label className="block text-sm font-semibold text-secondary mb-1">End Date</label>
                 <input
                   type="date"
                   required
                   value={form.endDate}
                   onChange={(e) => setForm({ ...form, endDate: e.target.value })}
-                  className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-gray-900 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition"
+                  className="w-full rounded-lg border border-border-strong px-4 py-2.5 text-primary focus:ring-2 focus:ring-ring-brand focus:border-border-brand outline-none transition"
                 />
               </div>
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">Reason</label>
+                <label className="block text-sm font-semibold text-secondary mb-1">Reason</label>
                 <input
                   type="text"
                   required
                   value={form.reason}
                   onChange={(e) => setForm({ ...form, reason: e.target.value })}
-                  className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-gray-900 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition"
+                  className="w-full rounded-lg border border-border-strong px-4 py-2.5 text-primary focus:ring-2 focus:ring-ring-brand focus:border-border-brand outline-none transition"
                   placeholder="e.g. Family vacation, doctor appointment..."
                 />
               </div>
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">Requested by</label>
+                <label className="block text-sm font-semibold text-secondary mb-1">Requested by</label>
                 <input
                   type="text"
                   value={currentUser}
                   readOnly
-                  className="w-full rounded-lg border border-gray-200 px-4 py-2.5 text-gray-500 bg-gray-50 cursor-not-allowed"
+                  className="w-full rounded-lg border border-border-default px-4 py-2.5 text-tertiary bg-surface cursor-not-allowed"
                 />
               </div>
               <div className="flex gap-3 justify-end pt-2">
                 <button
                   type="button"
                   onClick={() => setRequestingOff(false)}
-                  className="px-5 py-2.5 rounded-lg border border-gray-300 text-gray-700 font-medium hover:bg-gray-50 transition-colors"
+                  className="px-5 py-2.5 rounded-lg border border-border-strong text-secondary font-medium hover:bg-surface transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 rounded-lg bg-emerald-600 text-white font-medium hover:bg-emerald-700 transition-colors"
+                  className="px-5 py-2.5 rounded-lg bg-brand text-on-brand font-medium hover:bg-brand-hover transition-colors"
                 >
                   Submit Request
                 </button>

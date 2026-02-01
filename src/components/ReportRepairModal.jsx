@@ -34,7 +34,7 @@ export default function ReportRepairModal({ equipment, currentUser, onSubmit, on
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-hidden flex flex-col"
+        className="bg-card rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-hidden flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="bg-gradient-to-r from-orange-500 to-red-500 px-8 py-6 relative">
@@ -48,12 +48,12 @@ export default function ReportRepairModal({ equipment, currentUser, onSubmit, on
         </div>
         <form onSubmit={handleSubmit} className="p-8 overflow-y-auto space-y-5">
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1">Equipment</label>
+            <label className="block text-sm font-semibold text-secondary mb-1">Equipment</label>
             <select
               required
               value={form.equipmentId}
               onChange={(e) => setForm({ ...form, equipmentId: e.target.value })}
-              className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-gray-900 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition"
+              className="w-full rounded-lg border border-border-strong px-4 py-2.5 text-primary focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition"
             >
               <option value="">Select equipment...</option>
               {equipment.map((eq) => (
@@ -65,22 +65,22 @@ export default function ReportRepairModal({ equipment, currentUser, onSubmit, on
           </div>
 
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1">Problem Description</label>
+            <label className="block text-sm font-semibold text-secondary mb-1">Problem Description</label>
             <textarea
               required
               rows={4}
               value={form.problemDescription}
               onChange={(e) => setForm({ ...form, problemDescription: e.target.value })}
-              className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-gray-900 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition resize-y"
+              className="w-full rounded-lg border border-border-strong px-4 py-2.5 text-primary focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition resize-y"
               placeholder="Describe what's wrong..."
             />
           </div>
 
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1">Photo</label>
-            <label className="flex items-center gap-3 px-4 py-3 rounded-lg border border-dashed border-gray-300 cursor-pointer hover:border-orange-400 hover:bg-orange-50/50 transition-colors">
-              <Upload size={20} className="text-gray-400" />
-              <span className="text-sm text-gray-500">
+            <label className="block text-sm font-semibold text-secondary mb-1">Photo</label>
+            <label className="flex items-center gap-3 px-4 py-3 rounded-lg border border-dashed border-border-strong cursor-pointer hover:border-orange-400 hover:bg-orange-50/50 transition-colors">
+              <Upload size={20} className="text-muted" />
+              <span className="text-sm text-tertiary">
                 {photoPreview ? 'Photo attached — click to change' : 'Upload a photo of the issue'}
               </span>
               <input
@@ -100,7 +100,7 @@ export default function ReportRepairModal({ equipment, currentUser, onSubmit, on
           </div>
 
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">Urgency</label>
+            <label className="block text-sm font-semibold text-secondary mb-2">Urgency</label>
             <div className="flex gap-4">
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
@@ -128,12 +128,12 @@ export default function ReportRepairModal({ equipment, currentUser, onSubmit, on
           </div>
 
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1">Reported by</label>
+            <label className="block text-sm font-semibold text-secondary mb-1">Reported by</label>
             <input
               type="text"
               value={form.reportedBy}
               readOnly
-              className="w-full rounded-lg border border-gray-200 px-4 py-2.5 text-gray-500 bg-gray-50 cursor-not-allowed"
+              className="w-full rounded-lg border border-border-default px-4 py-2.5 text-tertiary bg-surface cursor-not-allowed"
             />
           </div>
 
@@ -141,7 +141,7 @@ export default function ReportRepairModal({ equipment, currentUser, onSubmit, on
             <button
               type="button"
               onClick={onClose}
-              className="px-5 py-2.5 rounded-lg border border-gray-300 text-gray-700 font-medium hover:bg-gray-50 transition-colors"
+              className="px-5 py-2.5 rounded-lg border border-border-strong text-secondary font-medium hover:bg-surface transition-colors"
             >
               Cancel
             </button>

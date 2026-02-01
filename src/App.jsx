@@ -1,59 +1,51 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import {
   Home as HomeIcon,
-  CheckSquare,
   BookOpen,
   Users,
   Lightbulb,
   LogOut,
   RefreshCw,
+  Settings as SettingsIcon,
 } from 'lucide-react';
-
-import {
-  initialAnnouncements,
-  initialStandards,
-  initialGuides,
-  initialFieldOpsGuides,
-  initialPMEGuides,
-  initialEquipment,
-  initialIdeas,
-  initialPolicies,
-  initialTimeOffRequests,
-  initialOwnerStartChecklist,
-  initialOwnerEndChecklist,
-  initialEquipmentRepairLog,
-  initialTeamChecklist,
-} from './data';
 
 import { supabase } from './lib/supabase';
 import { useAuth } from './contexts/AuthContext';
+import { AppStoreProvider, useAppStore } from './store/AppStoreContext';
 import LoginForm from './components/LoginForm';
 import Home from './pages/Home';
 import OwnerDashboard from './pages/OwnerDashboard';
-import Standards from './pages/Standards';
 import HowToGuides from './pages/HowToGuides';
 import EquipmentIdeas from './pages/EquipmentIdeas';
 import HRPolicies from './pages/HRPolicies';
 import IdeasFeedback from './pages/IdeasFeedback';
+import Settings from './pages/Settings';
 
 const TABS = [
-  { id: 'home', label: 'Home', icon: HomeIcon },
-  { id: 'guides', label: 'Playbooks', icon: BookOpen },
-  { id: 'standards', label: 'Standards', icon: CheckSquare },
-  { id: 'hr', label: 'HR', icon: Users },
-  { id: 'ideas', label: 'Ideas', icon: Lightbulb },
+  { id: 'home', path: '/', label: 'Home', icon: HomeIcon },
+  { id: 'guides', path: '/guides', label: 'Playbooks', icon: BookOpen },
+  { id: 'hr', path: '/hr', label: 'HR', icon: Users },
+  { id: 'ideas', path: '/ideas', label: 'Ideas', icon: Lightbulb },
 ];
 
 /* ─── App (outer) — auth gate + data loading ─── */
 
+const DATA_CACHE_KEY = 'greenteam-data-cache';
+
 function App() {
-  const { session, loading: authLoading } = useAuth();
-  const [cloudData, setCloudData] = useState(null);
+  const { session, user, ownerMode, loading: authLoading, signOut } = useAuth();
+  const [cloudData, setCloudData] = useState(() => {
+    try {
+      const cached = localStorage.getItem(DATA_CACHE_KEY);
+      return cached ? JSON.parse(cached) : null;
+    } catch {
+      return null;
+    }
+  });
   const [dataError, setDataError] = useState(null);
-  const [dataLoading, setDataLoading] = useState(false);
 
   const loadData = useCallback(async () => {
-    setDataLoading(true);
     setDataError(null);
     try {
       const { data, error } = await supabase
@@ -65,24 +57,29 @@ function App() {
         data.forEach((row) => { map[row.key] = row.value; });
       }
       setCloudData(map);
+      try { localStorage.setItem(DATA_CACHE_KEY, JSON.stringify(map)); } catch {}
     } catch (err) {
-      setDataError(err.message || 'Failed to load data');
-    } finally {
-      setDataLoading(false);
+      setCloudData((prev) => {
+        if (!prev) setDataError(err.message || 'Failed to load data');
+        return prev;
+      });
     }
   }, []);
 
   useEffect(() => {
     if (session) loadData();
-    else setCloudData(null);
+    else {
+      setCloudData(null);
+      try { localStorage.removeItem(DATA_CACHE_KEY); } catch {}
+    }
   }, [session, loadData]);
 
   if (authLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-surface flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 border-4 border-emerald-200 border-t-emerald-600 rounded-full animate-spin" />
-          <p className="text-gray-500 text-sm">Loading...</p>
+          <div className="w-8 h-8 border-4 border-brand-light border-t-brand rounded-full animate-spin" />
+          <p className="text-tertiary text-sm">Loading...</p>
         </div>
       </div>
     );
@@ -92,26 +89,15 @@ function App() {
     return <LoginForm />;
   }
 
-  if (dataLoading || !cloudData) {
+  if (dataError && !cloudData) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 border-4 border-emerald-200 border-t-emerald-600 rounded-full animate-spin" />
-          <p className="text-gray-500 text-sm">Loading data...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (dataError) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-8 max-w-sm w-full text-center">
-          <h2 className="text-xl font-bold text-gray-900 mb-2">Connection Error</h2>
-          <p className="text-gray-500 text-sm mb-6">{dataError}</p>
+      <div className="min-h-screen bg-surface flex items-center justify-center p-4">
+        <div className="bg-card rounded-2xl shadow-lg border border-border-subtle p-8 max-w-sm w-full text-center">
+          <h2 className="text-xl font-bold text-primary mb-2">Connection Error</h2>
+          <p className="text-tertiary text-sm mb-6">{dataError}</p>
           <button
             onClick={loadData}
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 text-white font-semibold hover:bg-emerald-700 transition-colors cursor-pointer"
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-brand text-on-brand font-semibold hover:bg-brand-hover transition-colors cursor-pointer"
           >
             <RefreshCw size={16} />
             Retry
@@ -121,81 +107,73 @@ function App() {
     );
   }
 
-  return <AppShell cloudData={cloudData} />;
-}
+  if (!cloudData) {
+    return (
+      <div className="min-h-screen bg-surface flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-4 border-brand-light border-t-brand rounded-full animate-spin" />
+          <p className="text-tertiary text-sm">Loading data...</p>
+        </div>
+      </div>
+    );
+  }
 
-/* ─── useCloudState — Supabase-backed state ─── */
+  // Access gate: non-owner users must be in the permissions map
+  const permissions = cloudData['greenteam-permissions'] || {};
+  const userEmail = user?.email?.toLowerCase();
+  if (!ownerMode && userEmail && !permissions[userEmail]) {
+    return (
+      <div className="min-h-screen bg-surface flex items-center justify-center p-4">
+        <div className="bg-card rounded-2xl shadow-lg border border-border-subtle p-8 max-w-sm w-full text-center">
+          <h2 className="text-xl font-bold text-primary mb-2">Access Denied</h2>
+          <p className="text-tertiary text-sm mb-6">
+            Your account does not have access to this app. Contact the team owner for permissions.
+          </p>
+          <button
+            onClick={signOut}
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-brand text-on-brand font-semibold hover:bg-brand-hover transition-colors cursor-pointer"
+          >
+            <LogOut size={16} />
+            Sign Out
+          </button>
+        </div>
+      </div>
+    );
+  }
 
-function useCloudState(key, initialValue, cloudData) {
-  const [state, setState] = useState(() => {
-    const cloud = cloudData[key];
-    if (cloud !== undefined && cloud !== null) {
-      if (Array.isArray(cloud) && cloud.length === 0 && Array.isArray(initialValue) && initialValue.length > 0) {
-        return initialValue;
-      }
-      return cloud;
-    }
-    return initialValue;
-  });
-
-  const initialized = useRef(false);
-  const debounceTimer = useRef(null);
-
-  useEffect(() => {
-    if (!initialized.current) {
-      initialized.current = true;
-      return;
-    }
-
-    if (debounceTimer.current) clearTimeout(debounceTimer.current);
-
-    debounceTimer.current = setTimeout(async () => {
-      try {
-        await supabase
-          .from('app_state')
-          .upsert({ key, value: state }, { onConflict: 'key' });
-      } catch {
-        /* silently skip — data will sync on next save */
-      }
-    }, 500);
-
-    return () => {
-      if (debounceTimer.current) clearTimeout(debounceTimer.current);
-    };
-  }, [key, state]);
-
-  return [state, setState];
+  return (
+    <AppStoreProvider cloudData={cloudData}>
+      <AppShell />
+    </AppStoreProvider>
+  );
 }
 
 /* ─── AppShell (inner) — the main app ─── */
 
-function AppShell({ cloudData }) {
-  const { currentUser, ownerMode, signOut } = useAuth();
-  const [tab, setTab] = useState('home');
+function AppShell() {
+  const { user, currentUser, ownerMode, signOut } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
 
-  const [announcements, setAnnouncements] = useCloudState('greenteam-announcements', initialAnnouncements, cloudData);
-  const [ownerTodos, setOwnerTodos] = useCloudState('greenteam-ownerTodos', [], cloudData);
-  const [ownerStartChecklist, setOwnerStartChecklist] = useCloudState('greenteam-ownerStartChecklist', initialOwnerStartChecklist, cloudData);
-  const [ownerEndChecklist, setOwnerEndChecklist] = useCloudState('greenteam-ownerEndChecklist', initialOwnerEndChecklist, cloudData);
-  const [standards, setStandards] = useCloudState('greenteam-standards', initialStandards, cloudData);
-  const [guides, setGuides] = useCloudState('greenteam-guides', [...initialGuides, ...initialFieldOpsGuides, ...initialPMEGuides], cloudData);
-  const [equipment, setEquipment] = useCloudState('greenteam-equipment', initialEquipment, cloudData);
-  const [ideas, setIdeas] = useCloudState('greenteam-ideas', initialIdeas, cloudData);
-  const [policies, setPolicies] = useCloudState('greenteam-policies', initialPolicies, cloudData);
-  const [timeOffRequests, setTimeOffRequests] = useCloudState('greenteam-timeOffRequests', initialTimeOffRequests, cloudData);
-  const [archivedAnnouncements, setArchivedAnnouncements] = useCloudState('greenteam-archivedAnnouncements', [], cloudData);
-  const [equipmentRepairLog, setEquipmentRepairLog] = useCloudState('greenteam-equipmentRepairLog', initialEquipmentRepairLog, cloudData);
-  const [teamChecklist, setTeamChecklist] = useCloudState('greenteam-teamChecklist', initialTeamChecklist, cloudData);
-  const [suggestions, setSuggestions] = useCloudState('greenteam-suggestions', [], cloudData);
+  const permissions = useAppStore((s) => s.permissions);
+  const userEmail = user?.email?.toLowerCase();
+  const allowedPlaybooks = ownerMode
+    ? ['service', 'sales', 'strategy']
+    : (permissions[userEmail]?.playbooks || ['service']);
 
   const handleSignOut = async () => {
     await signOut();
   };
 
+  const isActive = (path) => {
+    if (path === '/') return location.pathname === '/';
+    return location.pathname.startsWith(path);
+  };
+
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-surface">
       {/* Top Nav */}
-      <nav className="bg-white border-b border-gray-200 sticky top-0 z-40">
+      <nav className="bg-card border-b border-border-default sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-2">
@@ -209,11 +187,11 @@ function AppShell({ cloudData }) {
                 return (
                   <button
                     key={t.id}
-                    onClick={() => setTab(t.id)}
+                    onClick={() => navigate(t.path)}
                     className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                      tab === t.id
-                        ? 'bg-emerald-50 text-emerald-700'
-                        : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                      isActive(t.path)
+                        ? 'bg-brand-light text-brand-text-strong'
+                        : 'text-tertiary hover:text-secondary hover:bg-surface'
                     }`}
                   >
                     <Icon size={18} />
@@ -224,10 +202,21 @@ function AppShell({ cloudData }) {
             </div>
 
             <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-500 hidden sm:inline">{currentUser}</span>
+              <span className="text-sm text-tertiary hidden sm:inline">{currentUser}</span>
+              <button
+                onClick={() => navigate('/settings')}
+                className={`p-2 rounded-lg transition-colors ${
+                  isActive('/settings')
+                    ? 'text-brand-text-strong bg-brand-light'
+                    : 'text-muted hover:text-secondary hover:bg-surface'
+                }`}
+                title="Settings"
+              >
+                <SettingsIcon size={18} />
+              </button>
               <button
                 onClick={handleSignOut}
-                className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-50 transition-colors"
+                className="p-2 rounded-lg text-muted hover:text-secondary hover:bg-surface transition-colors"
                 title="Sign out"
               >
                 <LogOut size={18} />
@@ -237,17 +226,17 @@ function AppShell({ cloudData }) {
         </div>
 
         {/* Mobile Tabs */}
-        <div className="md:hidden flex border-t border-gray-100 overflow-x-auto">
+        <div className="md:hidden flex border-t border-border-subtle overflow-x-auto">
           {TABS.map((t) => {
             const Icon = t.icon;
             return (
               <button
                 key={t.id}
-                onClick={() => setTab(t.id)}
+                onClick={() => navigate(t.path)}
                 className={`flex-1 flex flex-col items-center gap-1 py-2.5 text-xs font-medium transition-colors min-w-[64px] ${
-                  tab === t.id
-                    ? 'text-emerald-700 border-b-2 border-emerald-600'
-                    : 'text-gray-400'
+                  isActive(t.path)
+                    ? 'text-brand-text-strong border-b-2 border-border-brand'
+                    : 'text-muted'
                 }`}
               >
                 <Icon size={18} />
@@ -260,70 +249,15 @@ function AppShell({ cloudData }) {
 
       {/* Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {tab === 'home' && (ownerMode ? (
-          <OwnerDashboard
-            currentUser={currentUser}
-            announcements={announcements}
-            setAnnouncements={setAnnouncements}
-            archivedAnnouncements={archivedAnnouncements}
-            setArchivedAnnouncements={setArchivedAnnouncements}
-            timeOffRequests={timeOffRequests}
-            setTimeOffRequests={setTimeOffRequests}
-            equipment={equipment}
-            setEquipment={setEquipment}
-            suggestions={suggestions}
-            setSuggestions={setSuggestions}
-            ownerTodos={ownerTodos}
-            setOwnerTodos={setOwnerTodos}
-            ownerStartChecklist={ownerStartChecklist}
-            setOwnerStartChecklist={setOwnerStartChecklist}
-            ownerEndChecklist={ownerEndChecklist}
-            setOwnerEndChecklist={setOwnerEndChecklist}
-            equipmentRepairLog={equipmentRepairLog}
-            setEquipmentRepairLog={setEquipmentRepairLog}
-            teamChecklist={teamChecklist}
-            setTeamChecklist={setTeamChecklist}
-            onNavigate={setTab}
-          />
-        ) : (
-          <Home announcements={announcements} onNavigate={setTab} teamChecklist={teamChecklist} />
-        ))}
-        {tab === 'standards' && (
-          <Standards items={standards} setItems={setStandards} ownerMode={ownerMode} />
-        )}
-        {tab === 'guides' && (
-          <HowToGuides items={guides} setItems={setGuides} ownerMode={ownerMode} />
-        )}
-        {tab === 'equipment' && (
-          <EquipmentIdeas
-            equipment={equipment}
-            setEquipment={setEquipment}
-            ideas={ideas}
-            setIdeas={setIdeas}
-            ownerMode={ownerMode}
-            currentUser={currentUser}
-            equipmentRepairLog={equipmentRepairLog}
-            setEquipmentRepairLog={setEquipmentRepairLog}
-          />
-        )}
-        {tab === 'hr' && (
-          <HRPolicies
-            items={policies}
-            setItems={setPolicies}
-            timeOffRequests={timeOffRequests}
-            setTimeOffRequests={setTimeOffRequests}
-            ownerMode={ownerMode}
-            currentUser={currentUser}
-          />
-        )}
-        {tab === 'ideas' && (
-          <IdeasFeedback
-            suggestions={suggestions}
-            setSuggestions={setSuggestions}
-            ownerMode={ownerMode}
-            currentUser={currentUser}
-          />
-        )}
+        <Routes>
+          <Route path="/" element={ownerMode ? <OwnerDashboard /> : <Home />} />
+          <Route path="/guides" element={<HowToGuides ownerMode={ownerMode} allowedPlaybooks={allowedPlaybooks} />} />
+          <Route path="/equipment" element={<EquipmentIdeas />} />
+          <Route path="/hr" element={<HRPolicies />} />
+          <Route path="/ideas" element={<IdeasFeedback />} />
+          <Route path="/settings" element={<Settings />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
       </main>
     </div>
   );

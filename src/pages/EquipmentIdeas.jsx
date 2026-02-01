@@ -1,14 +1,38 @@
 import { useState } from 'react';
-import { Wrench, AlertCircle, CheckCircle, Plus, Lightbulb, X, Trash2 } from 'lucide-react';
-import { genId } from '../data';
+import {
+  Wrench,
+  AlertCircle,
+  CheckCircle,
+  Plus,
+  X,
+  Trash2,
+  Search,
+  ExternalLink,
+  AlertTriangle,
+  ClipboardList,
+} from 'lucide-react';
+import { genId, EQUIPMENT_TYPES } from '../data';
 import AddEquipmentModal from '../components/AddEquipmentModal';
 import ReportRepairModal from '../components/ReportRepairModal';
+import { useAppStore } from '../store/AppStoreContext';
+import { useAuth } from '../contexts/AuthContext';
 
-export default function EquipmentIdeas({ equipment, setEquipment, ideas, setIdeas, ownerMode, currentUser, equipmentRepairLog, setEquipmentRepairLog }) {
+const TYPE_LABEL = Object.fromEntries(EQUIPMENT_TYPES.map((t) => [t.value, t.label]));
+
+export default function EquipmentIdeas() {
+  const { ownerMode, currentUser } = useAuth();
+  const equipment = useAppStore((s) => s.equipment);
+  const setEquipment = useAppStore((s) => s.setEquipment);
+  const equipmentRepairLog = useAppStore((s) => s.equipmentRepairLog);
+  const setEquipmentRepairLog = useAppStore((s) => s.setEquipmentRepairLog);
+
   const [addingEquipment, setAddingEquipment] = useState(false);
   const [reportingRepair, setReportingRepair] = useState(false);
-  const [addingIdea, setAddingIdea] = useState(false);
-  const [ideaForm, setIdeaForm] = useState({ title: '', description: '' });
+  const [confirmDelete, setConfirmDelete] = useState(null);
+  const [confirmDeleteText, setConfirmDeleteText] = useState('');
+  const [typeFilter, setTypeFilter] = useState('all');
+  const [search, setSearch] = useState('');
+  const [historyItem, setHistoryItem] = useState(null);
 
   const handleAddEquipment = (form) => {
     setEquipment([...equipment, { id: genId(), ...form }]);
@@ -41,6 +65,7 @@ export default function EquipmentIdeas({ equipment, setEquipment, ideas, setIdea
     if (eq && eq.reportedIssue) {
       const logEntry = {
         id: genId(),
+        equipmentId: eq.id,
         equipmentName: eq.name,
         issue: eq.reportedIssue,
         reportedBy: eq.reportedBy || 'Unknown',
@@ -53,7 +78,16 @@ export default function EquipmentIdeas({ equipment, setEquipment, ideas, setIdea
     setEquipment(
       equipment.map((e) =>
         e.id === id
-          ? { ...e, status: 'operational', lastMaintenance: today, reportedIssue: undefined, reportedBy: undefined, reportedDate: undefined, urgency: undefined, photo: undefined }
+          ? {
+              ...e,
+              status: 'operational',
+              lastMaintenance: today,
+              reportedIssue: undefined,
+              reportedBy: undefined,
+              reportedDate: undefined,
+              urgency: undefined,
+              photo: undefined,
+            }
           : e
       )
     );
@@ -61,62 +95,161 @@ export default function EquipmentIdeas({ equipment, setEquipment, ideas, setIdea
 
   const handleDeleteEquipment = (id) => {
     setEquipment(equipment.filter((eq) => eq.id !== id));
+    if (historyItem && historyItem.id === id) setHistoryItem(null);
+    setConfirmDelete(null);
+    setConfirmDeleteText('');
   };
 
-  const handleIdeaStatus = (id, status) => {
-    setIdeas(ideas.map((i) => (i.id === id ? { ...i, status } : i)));
-  };
+  // Filter equipment
+  const filtered = equipment.filter((item) => {
+    if (typeFilter !== 'all' && item.type !== typeFilter) return false;
+    if (search) {
+      const q = search.toLowerCase();
+      return (
+        item.name.toLowerCase().includes(q) ||
+        (item.serialNumber && item.serialNumber.toLowerCase().includes(q))
+      );
+    }
+    return true;
+  });
 
-  const handleDeleteIdea = (id) => {
-    setIdeas(ideas.filter((i) => i.id !== id));
-  };
+  // Recurring issues
+  const repairCounts = {};
+  equipmentRepairLog.forEach((e) => {
+    repairCounts[e.equipmentName] = (repairCounts[e.equipmentName] || 0) + 1;
+  });
+  const recurring = Object.entries(repairCounts).filter(([, c]) => c >= 2);
+
+  // Get repair history for a specific equipment
+  const getRepairHistory = (eq) =>
+    equipmentRepairLog.filter(
+      (r) => r.equipmentId === eq.id || r.equipmentName === eq.name
+    );
 
   return (
     <div>
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Equipment &amp; Ideas</h1>
-        <p className="text-gray-500 mt-1">Equipment tracking and team suggestions</p>
+        <h1 className="text-3xl font-bold text-primary">Equipment Log</h1>
+        <p className="text-tertiary mt-1">Equipment tracking and maintenance history</p>
       </div>
 
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-bold text-gray-900">Equipment Log</h2>
-          <div className="flex items-center gap-2">
-            {ownerMode && (
-              <button
-                onClick={() => setAddingEquipment(true)}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white text-sm font-semibold rounded-xl hover:bg-emerald-700 transition-colors cursor-pointer"
-              >
-                <Plus size={16} />
-                Add Equipment
-              </button>
-            )}
+      {/* Type Filter Tabs */}
+      <div className="flex flex-wrap gap-2 mb-4">
+        <button
+          onClick={() => setTypeFilter('all')}
+          className={`px-4 py-2 rounded-xl text-sm font-semibold transition-colors cursor-pointer ${
+            typeFilter === 'all'
+              ? 'bg-brand text-on-brand'
+              : 'bg-card border border-border-default text-secondary hover:bg-surface'
+          }`}
+        >
+          All ({equipment.length})
+        </button>
+        {EQUIPMENT_TYPES.map((t) => {
+          const count = equipment.filter((e) => e.type === t.value).length;
+          return (
             <button
-              onClick={() => setReportingRepair(true)}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-orange-500 to-red-500 text-white text-sm font-semibold rounded-xl hover:opacity-90 transition-opacity cursor-pointer"
+              key={t.value}
+              onClick={() => setTypeFilter(t.value)}
+              className={`px-4 py-2 rounded-xl text-sm font-semibold transition-colors cursor-pointer ${
+                typeFilter === t.value
+                  ? 'bg-brand text-on-brand'
+                  : 'bg-card border border-border-default text-secondary hover:bg-surface'
+              }`}
             >
-              <AlertCircle size={16} />
-              Report Repair
+              {t.label} ({count})
             </button>
-          </div>
+          );
+        })}
+      </div>
+
+      {/* Search & Actions */}
+      <div className="flex flex-col sm:flex-row gap-3 mb-6">
+        <div className="relative flex-1">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search equipment by name or serial..."
+            className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-border-default text-sm text-primary focus:ring-2 focus:ring-ring-brand focus:border-border-brand outline-none"
+          />
         </div>
+        <div className="flex items-center gap-2">
+          {ownerMode && (
+            <button
+              onClick={() => setAddingEquipment(true)}
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-brand text-on-brand text-sm font-semibold rounded-xl hover:bg-brand-hover transition-colors cursor-pointer"
+            >
+              <Plus size={16} />
+              Add Equipment
+            </button>
+          )}
+          <button
+            onClick={() => setReportingRepair(true)}
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-orange-500 to-red-500 text-white text-sm font-semibold rounded-xl hover:opacity-90 transition-opacity cursor-pointer"
+          >
+            <AlertCircle size={16} />
+            Report Repair
+          </button>
+        </div>
+      </div>
+
+      {/* Recurring Issues Warning */}
+      {recurring.length > 0 && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 mb-6">
+          <div className="flex items-center gap-2 mb-3">
+            <AlertTriangle size={18} className="text-amber-600" />
+            <h3 className="font-bold text-amber-800">Recurring Issues</h3>
+          </div>
+          <ul className="space-y-1.5">
+            {recurring.map(([name, count]) => (
+              <li key={name} className="text-sm text-amber-700 flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-amber-400" />
+                {name} — {count} repairs logged
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Equipment List */}
+      <div className="bg-card rounded-2xl shadow-sm border border-border-subtle p-6">
+        <h2 className="text-xl font-bold text-primary mb-6">
+          Equipment Log
+          <span className="text-sm font-normal text-muted ml-2">
+            {filtered.length} of {equipment.length}
+          </span>
+        </h2>
 
         <div className="space-y-4">
-          {equipment.map((item) => {
+          {filtered.length === 0 && (
+            <p className="text-muted text-sm py-4 text-center">No equipment matches your filters</p>
+          )}
+          {filtered.map((item) => {
             const needsRepair = item.status === 'needs-repair';
+            const repairs = getRepairHistory(item);
+
             return (
               <div
                 key={item.id}
                 className={`rounded-xl border-l-4 p-5 ${
                   needsRepair
                     ? 'border-l-red-500 bg-red-50/50 border border-red-200'
-                    : 'border-l-emerald-500 bg-white border border-gray-100'
+                    : 'border-l-emerald-500 bg-card border border-border-subtle'
                 }`}
               >
                 <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <h3 className="text-base font-bold text-gray-900">{item.name}</h3>
-                    <div className="flex items-center gap-2 mt-1.5">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="text-base font-bold text-primary">{item.name}</h3>
+                      {item.type && (
+                        <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-700">
+                          {TYPE_LABEL[item.type] || item.type}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                       <span
                         className={`inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full ${
                           needsRepair
@@ -140,220 +273,79 @@ export default function EquipmentIdeas({ equipment, setEquipment, ideas, setIdea
                       )}
                     </div>
 
-                    <div className="flex gap-8 mt-3">
-                      <div>
-                        <p className="text-xs text-gray-400">Last Maintenance</p>
-                        <p className="text-sm font-medium text-gray-700">{item.lastMaintenance}</p>
-                      </div>
-                      {item.nextMaintenance && (
+                    {/* Serial & Dates row */}
+                    <div className="flex flex-wrap gap-x-8 gap-y-1 mt-3 text-xs">
+                      {item.serialNumber && (
                         <div>
-                          <p className="text-xs text-gray-400">Next Maintenance</p>
-                          <p className="text-sm font-medium text-gray-700">{item.nextMaintenance}</p>
+                          <span className="text-muted">S/N:</span>{' '}
+                          <span className="font-medium text-secondary">{item.serialNumber}</span>
+                        </div>
+                      )}
+                      {item.lastMaintenance && (
+                        <div>
+                          <span className="text-muted">Last Maint:</span>{' '}
+                          <span className="font-medium text-secondary">{item.lastMaintenance}</span>
                         </div>
                       )}
                     </div>
 
                     {needsRepair && item.reportedIssue && (
                       <div className="mt-3">
-                        <p className="text-xs text-gray-400">Reported Issue</p>
+                        <p className="text-xs text-muted">Reported Issue</p>
                         <p className="text-sm text-red-600 mt-0.5">{item.reportedIssue}</p>
-                        {item.photo && (
-                          <img
-                            src={item.photo}
-                            alt="Repair photo"
-                            className="mt-2 rounded-lg max-h-32 object-cover"
-                          />
-                        )}
-                        <p className="text-xs text-gray-400 mt-2">
+                        <p className="text-xs text-muted mt-1">
                           Reported by {item.reportedBy} on {item.reportedDate}
                         </p>
                       </div>
                     )}
-                    {ownerMode && (
-                      <div className="flex gap-2 mt-4">
-                        {needsRepair && (
-                          <button
-                            onClick={() => handleMarkRepaired(item.id)}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 transition-colors cursor-pointer"
-                          >
-                            <CheckCircle size={14} />
-                            Mark Repaired
-                          </button>
-                        )}
+
+                    {/* Action buttons */}
+                    <div className="flex flex-wrap gap-2 mt-4">
+                      <button
+                        onClick={() => setHistoryItem(item)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-alt text-secondary text-xs font-semibold hover:bg-surface-strong transition-colors cursor-pointer"
+                      >
+                        <ClipboardList size={14} />
+                        History{repairs.length > 0 ? ` (${repairs.length})` : ''}
+                      </button>
+                      {item.manualUrl && (
+                        <a
+                          href={item.manualUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-light text-brand-text-strong text-xs font-semibold hover:bg-brand-light transition-colors"
+                        >
+                          <ExternalLink size={14} />
+                          Manual
+                        </a>
+                      )}
+                      {ownerMode && needsRepair && (
                         <button
-                          onClick={() => handleDeleteEquipment(item.id)}
+                          onClick={() => handleMarkRepaired(item.id)}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand text-on-brand text-xs font-semibold hover:bg-brand-hover transition-colors cursor-pointer"
+                        >
+                          <CheckCircle size={14} />
+                          Mark Repaired
+                        </button>
+                      )}
+                      {ownerMode && (
+                        <button
+                          onClick={() => { setConfirmDelete(item); setConfirmDeleteText(''); }}
                           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-50 text-red-600 text-xs font-semibold hover:bg-red-100 transition-colors cursor-pointer"
                         >
                           <Trash2 size={14} />
                           Delete
                         </button>
-                      </div>
-                    )}
-                  </div>
-                  <Wrench size={22} className={needsRepair ? 'text-red-400' : 'text-emerald-400'} />
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Team Ideas */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mt-8">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-bold text-gray-900">Team Ideas</h2>
-          <button
-            onClick={() => setAddingIdea(true)}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-500 to-purple-600 text-white text-sm font-semibold rounded-xl hover:opacity-90 transition-opacity cursor-pointer"
-          >
-            <Lightbulb size={16} />
-            Submit Idea
-          </button>
-        </div>
-
-        <div className="space-y-4">
-          {ideas.map((idea) => {
-            const statusColors = {
-              Reviewing: 'bg-purple-100 text-purple-700',
-              Approved: 'bg-blue-100 text-blue-700',
-              Implemented: 'bg-emerald-100 text-emerald-700',
-              Rejected: 'bg-red-100 text-red-700',
-            };
-            return (
-              <div key={idea.id} className="rounded-xl border border-gray-100 p-5">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <h3 className="text-base font-bold text-gray-900">{idea.title}</h3>
-                    <p className="text-sm text-gray-500 mt-1">{idea.description}</p>
-                    <div className="flex items-center justify-between mt-3">
-                      <p className="text-xs text-gray-400">
-                        By {idea.submittedBy} &middot; {idea.date}
-                      </p>
-                      <span
-                        className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
-                          statusColors[idea.status] || 'bg-gray-100 text-gray-600'
-                        }`}
-                      >
-                        {idea.status}
-                      </span>
+                      )}
                     </div>
-                    {ownerMode && (
-                      <div className="flex flex-wrap gap-2 mt-3">
-                        {['Reviewing', 'Approved', 'Implemented', 'Rejected']
-                          .filter((s) => s !== idea.status)
-                          .map((s) => (
-                            <button
-                              key={s}
-                              onClick={() => handleIdeaStatus(idea.id, s)}
-                              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${statusColors[s]
-                                } hover:opacity-80`}
-                            >
-                              {s}
-                            </button>
-                          ))}
-                        <button
-                          onClick={() => handleDeleteIdea(idea.id)}
-                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-red-50 text-red-600 text-xs font-semibold hover:bg-red-100 transition-colors cursor-pointer"
-                        >
-                          <Trash2 size={12} />
-                          Delete
-                        </button>
-                      </div>
-                    )}
                   </div>
-                  <Lightbulb size={22} className="text-purple-400 ml-4 shrink-0" />
+                  <Wrench size={22} className={`shrink-0 ml-4 ${needsRepair ? 'text-red-400' : 'text-emerald-400'}`} />
                 </div>
               </div>
             );
           })}
         </div>
       </div>
-
-      {addingIdea && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-          onClick={() => setAddingIdea(false)}
-        >
-          <div
-            className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden flex flex-col"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="bg-gradient-to-r from-purple-500 to-purple-700 px-8 py-6 relative">
-              <button
-                onClick={() => setAddingIdea(false)}
-                className="absolute top-4 right-4 text-white/80 hover:text-white transition-colors"
-              >
-                <X size={24} />
-              </button>
-              <h2 className="text-2xl font-bold text-white">Submit Idea</h2>
-            </div>
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                const today = new Date().toLocaleDateString('en-US');
-                setIdeas([...ideas, {
-                  id: genId(),
-                  title: ideaForm.title,
-                  description: ideaForm.description,
-                  submittedBy: currentUser,
-                  date: today,
-                  status: 'Reviewing',
-                }]);
-                setIdeaForm({ title: '', description: '' });
-                setAddingIdea(false);
-              }}
-              className="p-8 space-y-5"
-            >
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">Title</label>
-                <input
-                  type="text"
-                  required
-                  value={ideaForm.title}
-                  onChange={(e) => setIdeaForm({ ...ideaForm, title: e.target.value })}
-                  className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-gray-900 focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none transition"
-                  placeholder="What's your idea?"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">Description</label>
-                <textarea
-                  required
-                  rows={4}
-                  value={ideaForm.description}
-                  onChange={(e) => setIdeaForm({ ...ideaForm, description: e.target.value })}
-                  className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-gray-900 focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none transition resize-y"
-                  placeholder="Describe your idea and why it would help..."
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1">Submitted by</label>
-                <input
-                  type="text"
-                  value={currentUser}
-                  readOnly
-                  className="w-full rounded-lg border border-gray-200 px-4 py-2.5 text-gray-500 bg-gray-50 cursor-not-allowed"
-                />
-              </div>
-              <div className="flex gap-3 justify-end pt-2">
-                <button
-                  type="button"
-                  onClick={() => setAddingIdea(false)}
-                  className="px-5 py-2.5 rounded-lg border border-gray-300 text-gray-700 font-medium hover:bg-gray-50 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2.5 rounded-lg bg-purple-600 text-white font-medium hover:bg-purple-700 transition-colors"
-                >
-                  Submit
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
       {addingEquipment && (
         <AddEquipmentModal
@@ -369,6 +361,181 @@ export default function EquipmentIdeas({ equipment, setEquipment, ideas, setIdea
           onSubmit={handleRepairSubmit}
           onClose={() => setReportingRepair(false)}
         />
+      )}
+
+      {/* Repair History Modal */}
+      {historyItem && (() => {
+        const repairs = getRepairHistory(historyItem);
+        const needsRepair = historyItem.status === 'needs-repair';
+        return (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+            onClick={() => setHistoryItem(null)}
+          >
+            <div
+              className="bg-card rounded-2xl shadow-2xl max-w-xl w-full overflow-hidden flex flex-col max-h-[85vh]"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="bg-gradient-to-r from-gray-700 to-gray-900 px-8 py-6 relative shrink-0">
+                <button
+                  onClick={() => setHistoryItem(null)}
+                  className="absolute top-4 right-4 text-white/80 hover:text-white transition-colors cursor-pointer"
+                >
+                  <X size={24} />
+                </button>
+                <h2 className="text-xl font-bold text-white">{historyItem.name}</h2>
+                <div className="flex items-center gap-2 mt-2">
+                  {historyItem.type && (
+                    <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-white/20 text-white">
+                      {TYPE_LABEL[historyItem.type] || historyItem.type}
+                    </span>
+                  )}
+                  <span
+                    className={`text-xs font-semibold px-2.5 py-0.5 rounded-full ${
+                      needsRepair ? 'bg-red-400/30 text-red-100' : 'bg-emerald-400/30 text-emerald-100'
+                    }`}
+                  >
+                    {needsRepair ? 'Needs Repair' : 'Operational'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="overflow-y-auto p-6 space-y-5">
+                {/* Equipment Details */}
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  {historyItem.serialNumber && (
+                    <div>
+                      <p className="text-xs text-muted">Serial Number</p>
+                      <p className="font-medium text-primary">{historyItem.serialNumber}</p>
+                    </div>
+                  )}
+                  {historyItem.lastMaintenance && (
+                    <div>
+                      <p className="text-xs text-muted">Last Maintenance</p>
+                      <p className="font-medium text-primary">{historyItem.lastMaintenance}</p>
+                    </div>
+                  )}
+                  {historyItem.manualUrl && (
+                    <div>
+                      <p className="text-xs text-muted">Manual</p>
+                      <a
+                        href={historyItem.manualUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-brand-text hover:text-brand-text-strong font-medium"
+                      >
+                        <ExternalLink size={13} />
+                        View Manual
+                      </a>
+                    </div>
+                  )}
+                </div>
+
+                {/* Current Issue */}
+                {needsRepair && historyItem.reportedIssue && (
+                  <div className="rounded-xl bg-red-50 border border-red-200 p-4">
+                    <p className="text-xs font-semibold text-red-700 uppercase tracking-wide mb-1">Current Issue</p>
+                    <p className="text-sm text-red-600">{historyItem.reportedIssue}</p>
+                    {historyItem.photo && (
+                      <img
+                        src={historyItem.photo}
+                        alt="Repair photo"
+                        className="mt-2 rounded-lg max-h-40 object-cover"
+                      />
+                    )}
+                    <p className="text-xs text-muted mt-2">
+                      Reported by {historyItem.reportedBy} on {historyItem.reportedDate}
+                    </p>
+                  </div>
+                )}
+
+                {/* Repair History */}
+                <div>
+                  <div className="flex items-center gap-2 mb-3">
+                    <ClipboardList size={16} className="text-tertiary" />
+                    <h3 className="font-bold text-primary">Repair History</h3>
+                    <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-surface-alt text-secondary">
+                      {repairs.length} record{repairs.length !== 1 ? 's' : ''}
+                    </span>
+                  </div>
+                  {repairs.length === 0 ? (
+                    <p className="text-sm text-muted py-4 text-center">No repair history for this equipment</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {repairs.map((r) => (
+                        <div
+                          key={r.id}
+                          className="rounded-lg border border-border-subtle p-3 bg-surface/50"
+                        >
+                          <div className="flex items-center justify-between">
+                            <p className="text-sm text-secondary">{r.issue}</p>
+                            <span
+                              className={`text-xs font-semibold px-2 py-0.5 rounded-full shrink-0 ml-2 ${
+                                r.urgency === 'critical'
+                                  ? 'bg-red-100 text-red-700'
+                                  : 'bg-amber-100 text-amber-700'
+                              }`}
+                            >
+                              {r.urgency === 'critical' ? 'CRITICAL' : 'MAINT'}
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs text-muted">
+                            <span>Reported: {r.reportedDate}</span>
+                            <span>Fixed: {r.repairedDate}</span>
+                            <span>By: {r.reportedBy}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Confirm Delete Modal */}
+      {confirmDelete && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => { setConfirmDelete(null); setConfirmDeleteText(''); }}
+        >
+          <div
+            className="bg-card rounded-2xl shadow-2xl max-w-sm w-full p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-bold text-primary mb-2">Delete Equipment</h3>
+            <p className="text-sm text-secondary mb-4">
+              Type <span className="font-bold text-red-600">{confirmDelete.name}</span> to confirm deletion.
+            </p>
+            <input
+              type="text"
+              value={confirmDeleteText}
+              onChange={(e) => setConfirmDeleteText(e.target.value)}
+              placeholder="Type equipment name..."
+              className="w-full rounded-lg border border-border-strong px-4 py-2.5 text-primary focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none transition mb-4"
+              autoFocus
+            />
+            <div className="flex gap-3 justify-end">
+              <button
+                type="button"
+                onClick={() => { setConfirmDelete(null); setConfirmDeleteText(''); }}
+                className="px-4 py-2 rounded-lg border border-border-strong text-secondary text-sm font-medium hover:bg-surface transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={confirmDeleteText !== confirmDelete.name}
+                onClick={() => handleDeleteEquipment(confirmDelete.id)}
+                className="px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700 transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

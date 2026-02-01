@@ -1,17 +1,14 @@
-import { useState, useEffect } from 'react';
+import { useState, Suspense, lazy } from 'react';
 import { X } from 'lucide-react';
-import RichTextEditor from './RichTextEditor';
+
+const RichTextEditor = lazy(() => import('./RichTextEditor'));
 
 export default function EditModal({ item, categories, onSave, onClose, title, richText }) {
-  const [form, setForm] = useState({ title: '', category: '', content: '' });
-
-  useEffect(() => {
-    if (item) {
-      setForm({ title: item.title, category: item.category, content: item.content });
-    } else {
-      setForm({ title: '', category: categories[0] || '', content: '' });
-    }
-  }, [item, categories]);
+  const [form, setForm] = useState(() =>
+    item
+      ? { title: item.title || '', category: item.category || categories[0] || '', content: item.content || '' }
+      : { title: '', category: categories[0] || '', content: '' }
+  );
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -24,7 +21,7 @@ export default function EditModal({ item, categories, onSave, onClose, title, ri
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col"
+        className="bg-card rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="bg-gradient-to-r from-emerald-500 to-emerald-700 px-8 py-6 relative">
@@ -40,21 +37,21 @@ export default function EditModal({ item, categories, onSave, onClose, title, ri
         </div>
         <form onSubmit={handleSubmit} className="p-8 overflow-y-auto space-y-5">
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1">Title</label>
+            <label className="block text-sm font-semibold text-secondary mb-1">Title</label>
             <input
               type="text"
               required
               value={form.title}
               onChange={(e) => setForm({ ...form, title: e.target.value })}
-              className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-gray-900 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition"
+              className="w-full rounded-lg border border-border-strong px-4 py-2.5 text-primary focus:ring-2 focus:ring-ring-brand focus:border-border-brand outline-none transition"
             />
           </div>
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1">Category</label>
+            <label className="block text-sm font-semibold text-secondary mb-1">Category</label>
             <select
               value={form.category}
               onChange={(e) => setForm({ ...form, category: e.target.value })}
-              className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-gray-900 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition"
+              className="w-full rounded-lg border border-border-strong px-4 py-2.5 text-primary focus:ring-2 focus:ring-ring-brand focus:border-border-brand outline-none transition"
             >
               {categories.map((c) => (
                 <option key={c} value={c}>{c}</option>
@@ -62,19 +59,21 @@ export default function EditModal({ item, categories, onSave, onClose, title, ri
             </select>
           </div>
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1">Content</label>
+            <label className="block text-sm font-semibold text-secondary mb-1">Content</label>
             {richText ? (
-              <RichTextEditor
-                content={form.content}
-                onChange={(html) => setForm({ ...form, content: html })}
-              />
+              <Suspense fallback={<div className="text-tertiary py-4 text-center">Loading editor...</div>}>
+                <RichTextEditor
+                  content={form.content}
+                  onChange={(html) => setForm(prev => ({ ...prev, content: html }))}
+                />
+              </Suspense>
             ) : (
               <textarea
                 required
                 rows={12}
                 value={form.content}
                 onChange={(e) => setForm({ ...form, content: e.target.value })}
-                className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-gray-900 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition resize-y min-h-[300px]"
+                className="w-full rounded-lg border border-border-strong px-4 py-2.5 text-primary focus:ring-2 focus:ring-ring-brand focus:border-border-brand outline-none transition resize-y min-h-[300px]"
               />
             )}
           </div>
@@ -82,13 +81,13 @@ export default function EditModal({ item, categories, onSave, onClose, title, ri
             <button
               type="button"
               onClick={onClose}
-              className="px-5 py-2.5 rounded-lg border border-gray-300 text-gray-700 font-medium hover:bg-gray-50 transition-colors"
+              className="px-5 py-2.5 rounded-lg border border-border-strong text-secondary font-medium hover:bg-surface transition-colors"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="px-5 py-2.5 rounded-lg bg-emerald-600 text-white font-medium hover:bg-emerald-700 transition-colors"
+              className="px-5 py-2.5 rounded-lg bg-brand text-on-brand font-medium hover:bg-brand-hover transition-colors"
             >
               Save
             </button>

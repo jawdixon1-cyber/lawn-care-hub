@@ -15,6 +15,35 @@ import {
   Redo,
 } from 'lucide-react';
 
+const MAX_DIMENSION = 1200;
+const JPEG_QUALITY = 0.8;
+
+function compressImage(file) {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const img = new window.Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let { width, height } = img;
+      if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
+        if (width > height) {
+          height = Math.round(height * (MAX_DIMENSION / width));
+          width = MAX_DIMENSION;
+        } else {
+          width = Math.round(width * (MAX_DIMENSION / height));
+          height = MAX_DIMENSION;
+        }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+      resolve(canvas.toDataURL('image/jpeg', JPEG_QUALITY));
+    };
+    img.src = url;
+  });
+}
+
 function ToolbarButton({ onClick, active, children, title }) {
   return (
     <button
@@ -22,7 +51,7 @@ function ToolbarButton({ onClick, active, children, title }) {
       onClick={onClick}
       title={title}
       className={`p-1.5 rounded transition-colors ${
-        active ? 'bg-emerald-100 text-emerald-700' : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700'
+        active ? 'bg-brand-light text-brand-text-strong' : 'text-tertiary hover:bg-surface-alt hover:text-secondary'
       }`}
     >
       {children}
@@ -50,15 +79,13 @@ export default function RichTextEditor({ content, onChange }) {
             event.preventDefault();
             const file = item.getAsFile();
             if (file) {
-              const reader = new FileReader();
-              reader.onloadend = () => {
+              compressImage(file).then((src) => {
                 view.dispatch(
                   view.state.tr.replaceSelectionWith(
-                    view.state.schema.nodes.image.create({ src: reader.result })
+                    view.state.schema.nodes.image.create({ src })
                   )
                 );
-              };
-              reader.readAsDataURL(file);
+              });
             }
             return true;
           }
@@ -77,19 +104,17 @@ export default function RichTextEditor({ content, onChange }) {
     input.onchange = (e) => {
       const file = e.target.files[0];
       if (file) {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          editor.chain().focus().setImage({ src: reader.result }).run();
-        };
-        reader.readAsDataURL(file);
+        compressImage(file).then((src) => {
+          editor.chain().focus().setImage({ src }).run();
+        });
       }
     };
     input.click();
   };
 
   return (
-    <div className="border border-gray-300 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-emerald-500 focus-within:border-emerald-500 transition">
-      <div className="flex items-center gap-0.5 px-2 py-1.5 border-b border-gray-200 bg-gray-50 flex-wrap">
+    <div className="border border-border-strong rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-ring-brand focus-within:border-border-brand transition">
+      <div className="flex items-center gap-0.5 px-2 py-1.5 border-b border-border-default bg-surface flex-wrap">
         <ToolbarButton
           onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
           active={editor.isActive('heading', { level: 1 })}
@@ -111,7 +136,7 @@ export default function RichTextEditor({ content, onChange }) {
         >
           <Heading3 size={16} />
         </ToolbarButton>
-        <div className="w-px h-5 bg-gray-300 mx-1" />
+        <div className="w-px h-5 bg-surface-strong mx-1" />
         <ToolbarButton
           onClick={() => editor.chain().focus().toggleBold().run()}
           active={editor.isActive('bold')}
@@ -126,7 +151,7 @@ export default function RichTextEditor({ content, onChange }) {
         >
           <Italic size={16} />
         </ToolbarButton>
-        <div className="w-px h-5 bg-gray-300 mx-1" />
+        <div className="w-px h-5 bg-surface-strong mx-1" />
         <ToolbarButton
           onClick={() => editor.chain().focus().toggleBulletList().run()}
           active={editor.isActive('bulletList')}
@@ -141,11 +166,11 @@ export default function RichTextEditor({ content, onChange }) {
         >
           <ListOrdered size={16} />
         </ToolbarButton>
-        <div className="w-px h-5 bg-gray-300 mx-1" />
+        <div className="w-px h-5 bg-surface-strong mx-1" />
         <ToolbarButton onClick={handleImageUpload} title="Insert Image">
           <ImagePlus size={16} />
         </ToolbarButton>
-        <div className="w-px h-5 bg-gray-300 mx-1" />
+        <div className="w-px h-5 bg-surface-strong mx-1" />
         <ToolbarButton
           onClick={() => editor.chain().focus().undo().run()}
           title="Undo"
@@ -161,7 +186,7 @@ export default function RichTextEditor({ content, onChange }) {
       </div>
       <EditorContent
         editor={editor}
-        className="prose prose-sm max-w-none px-4 py-3 min-h-[300px] focus:outline-none [&_.tiptap]:outline-none [&_.tiptap]:min-h-[280px] [&_img]:rounded-lg [&_img]:max-h-64 [&_img]:object-cover [&_.tiptap_p.is-editor-empty:first-child::before]:text-gray-400 [&_.tiptap_p.is-editor-empty:first-child::before]:content-[attr(data-placeholder)] [&_.tiptap_p.is-editor-empty:first-child::before]:float-left [&_.tiptap_p.is-editor-empty:first-child::before]:pointer-events-none [&_.tiptap_p.is-editor-empty:first-child::before]:h-0"
+        className="prose prose-sm max-w-none px-4 py-3 min-h-[300px] focus:outline-none [&_.tiptap]:outline-none [&_.tiptap]:min-h-[280px] [&_img]:rounded-lg [&_img]:max-h-64 [&_img]:object-cover [&_.tiptap_p.is-editor-empty:first-child::before]:text-muted [&_.tiptap_p.is-editor-empty:first-child::before]:content-[attr(data-placeholder)] [&_.tiptap_p.is-editor-empty:first-child::before]:float-left [&_.tiptap_p.is-editor-empty:first-child::before]:pointer-events-none [&_.tiptap_p.is-editor-empty:first-child::before]:h-0"
       />
     </div>
   );

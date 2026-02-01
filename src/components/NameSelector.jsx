@@ -9,11 +9,11 @@ export default function NameSelector({ onSelect }) {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-8 max-w-sm w-full text-center">
+    <div className="min-h-screen bg-surface flex items-center justify-center p-4">
+      <div className="bg-card rounded-2xl shadow-lg border border-border-subtle p-8 max-w-sm w-full text-center">
         <img src="/logo.png" alt="Hey Jude's Lawn Care" className="h-16 mx-auto mb-4" />
-        <h1 className="text-2xl font-bold text-gray-900 mb-1">Hey Jude's Lawn Care HQ</h1>
-        <p className="text-gray-500 text-sm mb-8">Select your name to continue</p>
+        <h1 className="text-2xl font-bold text-primary mb-1">Hey Jude's Lawn Care HQ</h1>
+        <p className="text-tertiary text-sm mb-8">Select your name to continue</p>
         <div className="space-y-3">
           {USERS.map((name) => (
             <button

@@ -1,12 +1,15 @@
 import { useState } from 'react';
 import { X } from 'lucide-react';
+import { EQUIPMENT_TYPES } from '../data';
 
 export default function AddEquipmentModal({ onSave, onClose }) {
   const [form, setForm] = useState({
     name: '',
+    type: 'mower',
+    serialNumber: '',
+    manualUrl: '',
     status: 'operational',
     lastMaintenance: '',
-    nextMaintenance: '',
   });
 
   const handleSubmit = (e) => {
@@ -14,9 +17,11 @@ export default function AddEquipmentModal({ onSave, onClose }) {
     const fmt = (iso) => (iso ? new Date(iso + 'T00:00').toLocaleDateString('en-US') : '');
     onSave({
       name: form.name,
+      type: form.type,
+      serialNumber: form.serialNumber,
+      manualUrl: form.manualUrl,
       status: form.status,
       lastMaintenance: fmt(form.lastMaintenance),
-      nextMaintenance: fmt(form.nextMaintenance),
     });
   };
 
@@ -26,10 +31,10 @@ export default function AddEquipmentModal({ onSave, onClose }) {
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden flex flex-col"
+        className="bg-card rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden flex flex-col max-h-[90vh]"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="bg-gradient-to-r from-emerald-500 to-emerald-700 px-8 py-6 relative">
+        <div className="bg-gradient-to-r from-emerald-500 to-emerald-700 px-8 py-6 relative shrink-0">
           <button
             onClick={onClose}
             className="absolute top-4 right-4 text-white/80 hover:text-white transition-colors"
@@ -38,58 +43,81 @@ export default function AddEquipmentModal({ onSave, onClose }) {
           </button>
           <h2 className="text-2xl font-bold text-white">Add Equipment</h2>
         </div>
-        <form onSubmit={handleSubmit} className="p-8 space-y-5">
+        <form onSubmit={handleSubmit} className="p-8 space-y-5 overflow-y-auto">
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1">Equipment Name</label>
+            <label className="block text-sm font-semibold text-secondary mb-1">Equipment Name</label>
             <input
               type="text"
               required
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
-              className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-gray-900 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition"
-              placeholder="e.g. Toro Zero-Turn Mower #2"
+              className="w-full rounded-lg border border-border-strong px-4 py-2.5 text-primary focus:ring-2 focus:ring-ring-brand focus:border-border-brand outline-none transition"
+              placeholder="e.g. Toro TimeCutter 42in Zero-Turn #2"
             />
           </div>
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1">Status</label>
+            <label className="block text-sm font-semibold text-secondary mb-1">Type</label>
+            <select
+              value={form.type}
+              onChange={(e) => setForm({ ...form, type: e.target.value })}
+              className="w-full rounded-lg border border-border-strong px-4 py-2.5 text-primary focus:ring-2 focus:ring-ring-brand focus:border-border-brand outline-none transition"
+            >
+              {EQUIPMENT_TYPES.map((t) => (
+                <option key={t.value} value={t.value}>{t.label}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-semibold text-secondary mb-1">Serial Number</label>
+            <input
+              type="text"
+              value={form.serialNumber}
+              onChange={(e) => setForm({ ...form, serialNumber: e.target.value })}
+              className="w-full rounded-lg border border-border-strong px-4 py-2.5 text-primary focus:ring-2 focus:ring-ring-brand focus:border-border-brand outline-none transition"
+              placeholder="e.g. 400425612"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-semibold text-secondary mb-1">Manual Link</label>
+            <input
+              type="url"
+              value={form.manualUrl}
+              onChange={(e) => setForm({ ...form, manualUrl: e.target.value })}
+              className="w-full rounded-lg border border-border-strong px-4 py-2.5 text-primary focus:ring-2 focus:ring-ring-brand focus:border-border-brand outline-none transition"
+              placeholder="https://example.com/manual.pdf"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-semibold text-secondary mb-1">Status</label>
             <select
               value={form.status}
               onChange={(e) => setForm({ ...form, status: e.target.value })}
-              className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-gray-900 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition"
+              className="w-full rounded-lg border border-border-strong px-4 py-2.5 text-primary focus:ring-2 focus:ring-ring-brand focus:border-border-brand outline-none transition"
             >
               <option value="operational">Operational</option>
               <option value="needs-repair">Needs Repair</option>
             </select>
           </div>
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1">Last Maintenance</label>
+            <label className="block text-sm font-semibold text-secondary mb-1">Last Maintenance</label>
             <input
               type="date"
               value={form.lastMaintenance}
               onChange={(e) => setForm({ ...form, lastMaintenance: e.target.value })}
-              className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-gray-900 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1">Next Maintenance</label>
-            <input
-              type="date"
-              value={form.nextMaintenance}
-              onChange={(e) => setForm({ ...form, nextMaintenance: e.target.value })}
-              className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-gray-900 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition"
+              className="w-full rounded-lg border border-border-strong px-4 py-2.5 text-primary focus:ring-2 focus:ring-ring-brand focus:border-border-brand outline-none transition"
             />
           </div>
           <div className="flex gap-3 justify-end pt-2">
             <button
               type="button"
               onClick={onClose}
-              className="px-5 py-2.5 rounded-lg border border-gray-300 text-gray-700 font-medium hover:bg-gray-50 transition-colors"
+              className="px-5 py-2.5 rounded-lg border border-border-strong text-secondary font-medium hover:bg-surface transition-colors"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="px-5 py-2.5 rounded-lg bg-emerald-600 text-white font-medium hover:bg-emerald-700 transition-colors"
+              className="px-5 py-2.5 rounded-lg bg-brand text-on-brand font-medium hover:bg-brand-hover transition-colors"
             >
               Add
             </button>

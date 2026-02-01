@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { ChevronDown, Pencil, Trash2, Plus, Check, X } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { ChevronDown } from 'lucide-react';
 import { genId } from '../data';
 
 function renderLinkedText(text) {
@@ -18,7 +18,7 @@ function renderLinkedText(text) {
         href={match[2]}
         target="_blank"
         rel="noopener noreferrer"
-        className="text-emerald-600 hover:text-emerald-700 underline"
+        className="text-brand-text hover:text-brand-text-strong underline"
         onClick={(e) => e.stopPropagation()}
       >
         {match[1]}
@@ -32,114 +32,84 @@ function renderLinkedText(text) {
   return parts.length > 0 ? parts : text;
 }
 
-export default function OwnerChecklist({ title, items, setItems }) {
+export default function OwnerChecklist({ title, items, setItems, checklistType, checklistLog, setChecklistLog }) {
   const [open, setOpen] = useState(false);
-  const [editingId, setEditingId] = useState(null);
-  const [editText, setEditText] = useState('');
-  const [addText, setAddText] = useState('');
 
   const checkableItems = items.filter((i) => i.type !== 'header');
   const completedCount = checkableItems.filter((i) => i.done).length;
+  const logDebounce = useRef(null);
+
+  // Log completion to cloud
+  useEffect(() => {
+    if (!checklistType || !setChecklistLog || checkableItems.length === 0) return;
+    if (logDebounce.current) clearTimeout(logDebounce.current);
+
+    logDebounce.current = setTimeout(() => {
+      const today = new Date().toISOString().split('T')[0];
+      setChecklistLog((prev) => {
+        const existing = prev.findIndex(
+          (e) => e.date === today && e.checklistType === checklistType
+        );
+        const entry = {
+          id: existing >= 0 ? prev[existing].id : genId(),
+          date: today,
+          checklistType,
+          totalItems: checkableItems.length,
+          completedItems: completedCount,
+          updatedAt: new Date().toISOString(),
+        };
+        if (existing >= 0) {
+          const updated = [...prev];
+          updated[existing] = entry;
+          return updated;
+        }
+        return [...prev, entry];
+      });
+    }, 800);
+
+    return () => {
+      if (logDebounce.current) clearTimeout(logDebounce.current);
+    };
+  }, [completedCount, checklistType, setChecklistLog, checkableItems.length]);
 
   const toggleDone = (id) => {
     setItems(items.map((i) => (i.id === id ? { ...i, done: !i.done } : i)));
   };
 
-  const startEdit = (item) => {
-    setEditingId(item.id);
-    setEditText(item.text);
-  };
-
-  const saveEdit = () => {
-    if (editText.trim()) {
-      setItems(items.map((i) => (i.id === editingId ? { ...i, text: editText.trim() } : i)));
-    }
-    setEditingId(null);
-    setEditText('');
-  };
-
-  const cancelEdit = () => {
-    setEditingId(null);
-    setEditText('');
-  };
-
-  const deleteItem = (id) => {
-    setItems(items.filter((i) => i.id !== id));
-  };
-
-  const addItem = (e) => {
-    e.preventDefault();
-    if (!addText.trim()) return;
-    setItems([...items, { id: genId(), text: addText.trim(), type: 'item', indent: 0, done: false }]);
-    setAddText('');
-  };
-
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-gray-100">
+    <div className="bg-card rounded-2xl shadow-sm border border-border-subtle">
       <button
         onClick={() => setOpen((o) => !o)}
         className="w-full flex items-center justify-between p-6 cursor-pointer"
       >
         <div className="flex items-center gap-3">
-          <span className="font-bold text-gray-900 text-lg">{title}</span>
-          <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700">
+          <span className="font-bold text-primary text-lg">{title}</span>
+          <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-brand-light text-brand-text-strong">
             {completedCount}/{checkableItems.length} completed
           </span>
         </div>
         <ChevronDown
           size={20}
-          className={`text-gray-400 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+          className={`text-muted transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
         />
       </button>
 
       {open && (
         <div className="px-6 pb-6 space-y-2">
           {items.map((item) => {
-            if (editingId === item.id) {
-              return (
-                <div key={item.id} className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      value={editText}
-                      onChange={(e) => setEditText(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') saveEdit();
-                        if (e.key === 'Escape') cancelEdit();
-                      }}
-                      className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
-                      autoFocus
-                    />
-                    <button onClick={saveEdit} className="p-1.5 rounded-lg text-emerald-600 hover:bg-emerald-50 cursor-pointer">
-                      <Check size={16} />
-                    </button>
-                    <button onClick={cancelEdit} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-50 cursor-pointer">
-                      <X size={16} />
-                    </button>
-                  </div>
-                  <p className="text-[11px] text-gray-400 ml-1">Use [text](url) for links</p>
-                </div>
-              );
-            }
-
             if (item.type === 'header') {
               return (
-                <div key={item.id} className="flex items-center justify-between group pt-3 first:pt-0">
-                  <h3 className="font-bold text-gray-800 text-sm uppercase tracking-wide">{item.text}</h3>
-                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button onClick={() => startEdit(item)} className="p-1 rounded text-gray-300 hover:text-blue-500 cursor-pointer">
-                      <Pencil size={12} />
-                    </button>
-                    <button onClick={() => deleteItem(item.id)} className="p-1 rounded text-gray-300 hover:text-red-500 cursor-pointer">
-                      <Trash2 size={12} />
-                    </button>
-                  </div>
-                </div>
+                <h3 key={item.id} className="font-bold text-primary text-sm uppercase tracking-wide pt-3 first:pt-0">
+                  {item.text}
+                </h3>
               );
             }
 
             return (
-              <div key={item.id} className={`flex items-start gap-3 group ${item.indent ? 'ml-8' : ''}`}>
+              <label
+                key={item.id}
+                className={`flex items-start gap-3 cursor-pointer ${item.indent ? 'ml-8' : ''}`}
+              >
                 <input
                   type="checkbox"
                   checked={item.done}
@@ -148,39 +118,14 @@ export default function OwnerChecklist({ title, items, setItems }) {
                 />
                 <span
                   className={`flex-1 text-sm transition-colors duration-150 ${
-                    item.done ? 'line-through text-gray-400' : 'text-gray-700'
+                    item.done ? 'line-through text-muted' : 'text-secondary'
                   }`}
                 >
                   {renderLinkedText(item.text)}
                 </span>
-                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                  <button onClick={() => startEdit(item)} className="p-1 rounded text-gray-300 hover:text-blue-500 cursor-pointer">
-                    <Pencil size={12} />
-                  </button>
-                  <button onClick={() => deleteItem(item.id)} className="p-1 rounded text-gray-300 hover:text-red-500 cursor-pointer">
-                    <Trash2 size={12} />
-                  </button>
-                </div>
-              </div>
+              </label>
             );
           })}
-
-          <form onSubmit={addItem} className="flex items-center gap-2 pt-3 border-t border-gray-100 mt-3">
-            <input
-              type="text"
-              value={addText}
-              onChange={(e) => setAddText(e.target.value)}
-              className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
-              placeholder="Add item (use [text](url) for links)..."
-            />
-            <button
-              type="submit"
-              className="inline-flex items-center gap-1 px-3 py-2 rounded-lg bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 transition-colors cursor-pointer"
-            >
-              <Plus size={14} />
-              Add
-            </button>
-          </form>
         </div>
       )}
     </div>

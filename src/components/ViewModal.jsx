@@ -6,8 +6,12 @@ const gradients = {
   Conduct: 'from-purple-500 to-purple-700',
   Professionalism: 'from-blue-500 to-blue-700',
   'Service Work': 'from-green-500 to-green-700',
+  'Field Team': 'from-emerald-500 to-emerald-700',
   'Equipment & Maintenance': 'from-orange-500 to-orange-700',
   'Equipment Guide': 'from-orange-500 to-orange-700',
+  Sales: 'from-purple-500 to-purple-700',
+  Owner: 'from-blue-500 to-blue-700',
+  Strategy: 'from-blue-500 to-blue-700',
   'Business Idea': 'from-sky-500 to-sky-700',
   Hiring: 'from-indigo-500 to-indigo-700',
   Training: 'from-teal-500 to-teal-700',
@@ -25,7 +29,7 @@ export default function ViewModal({ item, onClose }) {
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col"
+        className="bg-card rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         <div className={`bg-gradient-to-r ${gradient} px-8 py-6 relative`}>
@@ -43,11 +47,11 @@ export default function ViewModal({ item, onClose }) {
         <div className="p-8 overflow-y-auto">
           {item.content && item.content.includes('<') ? (
             <div
-              className="prose prose-sm max-w-none text-gray-700 [&_img]:rounded-lg [&_img]:max-h-64 [&_img]:object-cover"
+              className="prose prose-sm max-w-none text-secondary [&_img]:rounded-lg [&_img]:max-h-64 [&_img]:object-cover"
               dangerouslySetInnerHTML={{ __html: item.content }}
             />
           ) : (
-            <p className="text-gray-700 leading-relaxed whitespace-pre-line">{item.content}</p>
+            <p className="text-secondary leading-relaxed whitespace-pre-line">{item.content}</p>
           )}
         </div>
       </div>

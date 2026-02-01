@@ -1,80 +1,117 @@
-import { Megaphone, ChevronRight, ClipboardCheck, AlertCircle, Lightbulb } from 'lucide-react';
+import { Megaphone, ChevronRight, ClipboardCheck, AlertCircle, Lightbulb, Check } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import ChecklistPanel from '../components/ChecklistPanel';
+import { useAppStore } from '../store/AppStoreContext';
+import { useAuth } from '../contexts/AuthContext';
 
-const endOfDayItems = [
-  'Clean all equipment and remove debris',
-  'Inspect equipment for damage and report issues',
-  'Refuel equipment for next day',
-  'Secure all tools and lock storage',
-  'Log completed jobs and note any client concerns',
-  'Empty truck of trash and leftover materials',
-  'Submit timesheet and mileage',
-];
+export default function Home() {
+  const navigate = useNavigate();
+  const { user, currentUser } = useAuth();
+  const userEmail = user?.email;
 
-export default function Home({ announcements, onNavigate, teamChecklist }) {
+  const announcements = useAppStore((s) => s.announcements);
+  const setAnnouncements = useAppStore((s) => s.setAnnouncements);
+  const teamChecklist = useAppStore((s) => s.teamChecklist);
+  const teamEndChecklist = useAppStore((s) => s.teamEndChecklist);
+  const checklistLog = useAppStore((s) => s.checklistLog);
+  const setChecklistLog = useAppStore((s) => s.setChecklistLog);
+
+  const unacknowledged = announcements.filter((a) => !a.acknowledgedBy?.[userEmail]);
+
+  const handleAcknowledge = (id) => {
+    setAnnouncements(
+      announcements.map((a) =>
+        a.id === id
+          ? {
+              ...a,
+              acknowledgedBy: {
+                ...a.acknowledgedBy,
+                [userEmail]: { name: currentUser, at: new Date().toISOString() },
+              },
+            }
+          : a
+      )
+    );
+  };
+
   return (
     <div>
+      {/* Blocking announcement modal */}
+      {unacknowledged.length > 0 && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
+          <div className="bg-card rounded-2xl shadow-2xl w-full max-w-lg max-h-[85vh] flex flex-col">
+            <div className="flex items-center gap-2 px-6 py-4 border-b border-border-subtle shrink-0">
+              <Megaphone size={18} className="text-brand-text" />
+              <h2 className="text-lg font-bold text-primary">New Announcements</h2>
+              <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">
+                {unacknowledged.length}
+              </span>
+            </div>
+            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+              {unacknowledged.map((a) => (
+                <div
+                  key={a.id}
+                  className={`rounded-xl border p-5 ${
+                    a.priority === 'high'
+                      ? 'border-red-200 bg-red-50/50'
+                      : 'border-border-subtle bg-surface'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3 mb-2">
+                    <h3 className="text-base font-bold text-primary">{a.title}</h3>
+                    {a.priority === 'high' && (
+                      <span className="shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full bg-red-100 text-red-700">
+                        HIGH
+                      </span>
+                    )}
+                    {a.priority === 'normal' && (
+                      <span className="shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full bg-surface-alt text-secondary">
+                        NORMAL
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-secondary text-sm leading-relaxed mb-4">{a.message}</p>
+                  <div className="flex items-center justify-between">
+                    <div className="text-xs text-muted">
+                      <span>Posted by {a.postedBy}</span>
+                      <span className="ml-3">{a.date}</span>
+                    </div>
+                    <button
+                      onClick={() => handleAcknowledge(a.id)}
+                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-brand text-on-brand text-xs font-semibold hover:bg-brand-hover transition-colors cursor-pointer"
+                    >
+                      <Check size={14} />
+                      Got it
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="bg-gradient-to-r from-emerald-600 to-emerald-800 rounded-2xl p-8 md:p-12 text-white mb-8">
         <div className="mb-4">
           <h1 className="text-3xl md:text-4xl font-bold">Welcome to HQ</h1>
           <p className="text-emerald-100 mt-1 text-lg">Your lawn care operations center</p>
         </div>
         <p className="text-emerald-100 max-w-2xl">
-          Access company playbooks, standards, and HR policies all in one place.
+          Everything you need to do great work — playbooks, HR policies, and a place to share ideas that move the business forward.
         </p>
         <p className="text-white font-semibold mt-4 text-lg">
-          Review announcements, run through your checklist, and head to Jobber — every shift, every time.
+          Knock out your checklist, grab your route, and let's have a great day.
         </p>
       </div>
 
       <div className="flex items-center gap-2 mb-6">
-        <Megaphone size={22} className="text-emerald-600" />
-        <h2 className="text-2xl font-bold text-gray-900">Announcements</h2>
-      </div>
-
-      {announcements.length === 0 && (
-        <p className="text-gray-400 text-sm mb-6">No announcements right now.</p>
-      )}
-      <div className="grid gap-4 md:grid-cols-2">
-        {announcements.map((a) => (
-          <div
-            key={a.id}
-            className={`rounded-2xl border p-6 ${
-              a.priority === 'high'
-                ? 'border-red-200 bg-red-50/50'
-                : 'border-gray-100 bg-white'
-            } shadow-sm`}
-          >
-            <div className="flex items-start justify-between gap-3 mb-3">
-              <h3 className="text-lg font-bold text-gray-900">{a.title}</h3>
-              {a.priority === 'high' && (
-                <span className="shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full bg-red-100 text-red-700">
-                  HIGH
-                </span>
-              )}
-              {a.priority === 'normal' && (
-                <span className="shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full bg-gray-100 text-gray-600">
-                  NORMAL
-                </span>
-              )}
-            </div>
-            <p className="text-gray-600 text-sm leading-relaxed mb-4">{a.message}</p>
-            <div className="flex items-center justify-between text-xs text-gray-400">
-              <span>Posted by {a.postedBy}</span>
-              <span>{a.date}</span>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <div className="flex items-center gap-2 mb-6 mt-10">
-        <ClipboardCheck size={22} className="text-emerald-600" />
-        <h2 className="text-2xl font-bold text-gray-900">Daily Checklists</h2>
+        <ClipboardCheck size={22} className="text-brand-text" />
+        <h2 className="text-2xl font-bold text-primary">Daily Checklists</h2>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
-        <ChecklistPanel title="Start of Day" items={teamChecklist} />
-        <ChecklistPanel title="End of Day" items={endOfDayItems} />
+        <ChecklistPanel title="Start of Day" items={teamChecklist} checklistType="team-start" checklistLog={checklistLog} setChecklistLog={setChecklistLog} />
+        <ChecklistPanel title="End of Day" items={teamEndChecklist} checklistType="team-end" checklistLog={checklistLog} setChecklistLog={setChecklistLog} />
       </div>
 
       <div className="grid gap-4 md:grid-cols-3 mt-6">
@@ -91,7 +128,7 @@ export default function Home({ announcements, onNavigate, teamChecklist }) {
           <ChevronRight size={24} />
         </a>
         <button
-          onClick={() => onNavigate('equipment')}
+          onClick={() => navigate('/equipment')}
           className="flex items-center justify-between rounded-2xl bg-gradient-to-r from-orange-500 to-red-500 p-6 text-white text-left hover:opacity-90 transition-opacity cursor-pointer"
         >
           <div>
@@ -101,7 +138,7 @@ export default function Home({ announcements, onNavigate, teamChecklist }) {
           <AlertCircle size={24} />
         </button>
         <button
-          onClick={() => onNavigate('ideas')}
+          onClick={() => navigate('/ideas')}
           className="flex items-center justify-between rounded-2xl bg-gradient-to-r from-purple-500 to-purple-700 p-6 text-white text-left hover:opacity-90 transition-opacity cursor-pointer"
         >
           <div>

@@ -1,35 +1,70 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { BookOpen, Plus, Search } from 'lucide-react';
 import Card from '../components/Card';
 import ViewModal from '../components/ViewModal';
 import EditModal from '../components/EditModal';
 import { genId } from '../data';
+import { useAppStore } from '../store/AppStoreContext';
 
-const ALL_CATEGORIES = ['Service Work', 'Equipment & Maintenance', 'Quoting & Sales'];
+const ALL_CATEGORIES = ['Service', 'Sales', 'Strategy'];
 
 const CATEGORY_TO_TYPE = {
-  'Service Work': 'service',
-  'Equipment & Maintenance': 'equipment',
-  'Quoting & Sales': 'pme',
+  'Service': 'field-team',
+  'Sales': 'sales',
+  'Strategy': 'strategy',
 };
 
-export default function HowToGuides({ items, setItems, ownerMode }) {
+const ALL_TABS = [
+  { key: 'field-team', label: 'Service', activeColor: 'text-brand-text-strong', playbookKey: 'service' },
+  { key: 'sales', label: 'Sales', activeColor: 'text-purple-700', playbookKey: 'sales' },
+  { key: 'strategy', label: 'Strategy', activeColor: 'text-blue-700', playbookKey: 'strategy' },
+];
+
+export default function HowToGuides({ ownerMode, allowedPlaybooks }) {
+  const items = useAppStore((s) => s.guides);
+  const setItems = useAppStore((s) => s.setGuides);
+
   const [viewing, setViewing] = useState(null);
   const [editing, setEditing] = useState(null);
   const [adding, setAdding] = useState(false);
-  const [filter, setFilter] = useState('service');
+  const [confirmDelete, setConfirmDelete] = useState(null);
+  const [confirmDeleteText, setConfirmDeleteText] = useState('');
+  const visibleTabs = allowedPlaybooks
+    ? ALL_TABS.filter((t) => allowedPlaybooks.includes(t.playbookKey))
+    : ALL_TABS;
+
+  const [filter, setFilter] = useState(() => visibleTabs[0]?.key || 'field-team');
   const [search, setSearch] = useState('');
 
+  useEffect(() => {
+    if (visibleTabs.length > 0 && !visibleTabs.some((t) => t.key === filter)) {
+      setFilter(visibleTabs[0].key);
+    }
+  }, [visibleTabs, filter]);
+
   const query = search.toLowerCase().trim();
+  const typeMatch = (itemType) => {
+    if (itemType === filter) return true;
+    if (filter === 'field-team') return itemType === 'service' || itemType === 'equipment';
+    if (filter === 'sales') return itemType === 'pme';
+    if (filter === 'strategy') return itemType === 'owner';
+    return false;
+  };
   const filtered = items.filter((i) => {
-    const matchesTab = i.type === filter;
-    if (!query) return matchesTab;
+    if (!query) return typeMatch(i.type);
     return (i.title?.toLowerCase().includes(query) || i.summary?.toLowerCase().includes(query));
   });
 
   const handleDelete = (item) => {
-    if (confirm(`Delete "${item.title}"?`)) {
-      setItems(items.filter((i) => i.id !== item.id));
+    setConfirmDelete(item);
+    setConfirmDeleteText('');
+  };
+
+  const executeDelete = () => {
+    if (confirmDelete) {
+      setItems(items.filter((i) => i.id !== confirmDelete.id));
+      setConfirmDelete(null);
+      setConfirmDeleteText('');
     }
   };
 
@@ -49,15 +84,15 @@ export default function HowToGuides({ items, setItems, ownerMode }) {
       <div className="flex items-center justify-between mb-6">
         <div>
           <div className="flex items-center gap-2">
-            <BookOpen size={22} className="text-emerald-600" />
-            <h2 className="text-2xl font-bold text-gray-900">Playbooks</h2>
+            <BookOpen size={22} className="text-brand-text" />
+            <h2 className="text-2xl font-bold text-primary">Playbooks</h2>
           </div>
-          <p className="text-gray-500 mt-1">Step-by-step procedures</p>
+          <p className="text-tertiary mt-1">Step-by-step procedures</p>
         </div>
         {ownerMode && (
           <button
             onClick={() => setAdding(true)}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 text-white font-medium text-sm hover:bg-emerald-700 transition-colors"
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-brand text-on-brand font-medium text-sm hover:bg-brand-hover transition-colors"
           >
             <Plus size={18} /> Add Guide
           </button>
@@ -65,38 +100,40 @@ export default function HowToGuides({ items, setItems, ownerMode }) {
       </div>
 
       <div className="relative mb-4">
-        <Search size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+        <Search size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted" />
         <input
           type="text"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search playbooks..."
-          className="w-full rounded-xl border border-gray-200 bg-white pl-10 pr-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition"
+          className="w-full rounded-xl border border-border-default bg-card pl-10 pr-4 py-2.5 text-sm text-primary placeholder-placeholder-muted focus:ring-2 focus:ring-ring-brand focus:border-border-brand outline-none transition"
         />
       </div>
 
-      <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-xl w-fit mb-6 overflow-x-auto">
-        {[
-          { key: 'service', label: 'Service Work', activeColor: 'text-emerald-700' },
-          { key: 'equipment', label: 'Equipment', activeColor: 'text-orange-700' },
-          { key: 'pme', label: 'Quoting & Sales', activeColor: 'text-purple-700' },
-        ].map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => setFilter(tab.key)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
-              filter === tab.key
-                ? `bg-white ${tab.activeColor} shadow-sm`
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
+      {visibleTabs.length === 0 ? (
+        <div className="bg-card rounded-2xl shadow-lg border border-border-subtle p-8 text-center mb-6">
+          <p className="text-muted text-sm">No playbooks available. Contact the team owner for access.</p>
+        </div>
+      ) : (
+        <div className="flex items-center gap-1 bg-surface-alt p-1 rounded-xl w-fit mb-6 overflow-x-auto">
+          {visibleTabs.map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setFilter(tab.key)}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
+                filter === tab.key
+                  ? `bg-card ${tab.activeColor} shadow-sm`
+                  : 'text-tertiary hover:text-secondary'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {filtered.length === 0 ? (
-        <p className="text-gray-400 text-sm">{query ? 'No playbooks match your search.' : 'No playbooks in this category yet.'}</p>
+        <p className="text-muted text-sm">{query ? 'No playbooks match your search.' : 'No playbooks in this category yet.'}</p>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {filtered.map((item) => (
@@ -122,6 +159,49 @@ export default function HowToGuides({ items, setItems, ownerMode }) {
           onSave={handleSave}
           onClose={() => { setEditing(null); setAdding(false); }}
         />
+      )}
+
+      {/* Confirm Delete Modal */}
+      {confirmDelete && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => { setConfirmDelete(null); setConfirmDeleteText(''); }}
+        >
+          <div
+            className="bg-card rounded-2xl shadow-2xl max-w-sm w-full p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-bold text-primary mb-2">Delete Playbook</h3>
+            <p className="text-sm text-secondary mb-4">
+              Type <span className="font-bold text-red-600">{confirmDelete.title}</span> to confirm deletion.
+            </p>
+            <input
+              type="text"
+              value={confirmDeleteText}
+              onChange={(e) => setConfirmDeleteText(e.target.value)}
+              placeholder="Type playbook title..."
+              className="w-full rounded-lg border border-border-strong px-4 py-2.5 text-primary focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none transition mb-4"
+              autoFocus
+            />
+            <div className="flex gap-3 justify-end">
+              <button
+                type="button"
+                onClick={() => { setConfirmDelete(null); setConfirmDeleteText(''); }}
+                className="px-4 py-2 rounded-lg border border-border-strong text-secondary text-sm font-medium hover:bg-surface transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={confirmDeleteText !== confirmDelete.title}
+                onClick={executeDelete}
+                className="px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700 transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

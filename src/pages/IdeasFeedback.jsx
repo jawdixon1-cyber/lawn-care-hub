@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Lightbulb, MessageSquare, Plus, X, Trash2 } from 'lucide-react';
 import { genId } from '../data';
+import { useAppStore } from '../store/AppStoreContext';
+import { useAuth } from '../contexts/AuthContext';
 
 const STATUS_COLORS = {
   New: 'bg-purple-100 text-purple-700',
@@ -10,7 +12,11 @@ const STATUS_COLORS = {
   Rejected: 'bg-red-100 text-red-700',
 };
 
-export default function IdeasFeedback({ suggestions, setSuggestions, ownerMode, currentUser }) {
+export default function IdeasFeedback() {
+  const { ownerMode, currentUser } = useAuth();
+  const suggestions = useAppStore((s) => s.suggestions);
+  const setSuggestions = useAppStore((s) => s.setSuggestions);
+
   const [filter, setFilter] = useState('all');
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState({ type: 'idea', title: '', description: '' });
@@ -54,9 +60,9 @@ export default function IdeasFeedback({ suggestions, setSuggestions, ownerMode, 
         <div>
           <div className="flex items-center gap-2">
             <Lightbulb size={22} className="text-amber-500" />
-            <h2 className="text-2xl font-bold text-gray-900">Ideas & Feedback</h2>
+            <h2 className="text-2xl font-bold text-primary">Ideas & Feedback</h2>
           </div>
-          <p className="text-gray-500 mt-1">Submit ideas to improve the business or feedback on the software</p>
+          <p className="text-tertiary mt-1">Submit ideas to improve the business or feedback on the software</p>
         </div>
         {!adding && (
           <button
@@ -69,16 +75,16 @@ export default function IdeasFeedback({ suggestions, setSuggestions, ownerMode, 
       </div>
 
       {adding && (
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-6">
+        <div className="bg-card rounded-2xl shadow-sm border border-border-subtle p-6 mb-6">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="font-bold text-gray-900">New Submission</h3>
-            <button onClick={() => { setAdding(false); setForm({ type: 'idea', title: '', description: '' }); }} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-50 cursor-pointer">
+            <h3 className="font-bold text-primary">New Submission</h3>
+            <button onClick={() => { setAdding(false); setForm({ type: 'idea', title: '', description: '' }); }} className="p-1.5 rounded-lg text-muted hover:text-secondary hover:bg-surface cursor-pointer">
               <X size={18} />
             </button>
           </div>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">What type?</label>
+              <label className="block text-sm font-semibold text-secondary mb-2">What type?</label>
               <div className="flex gap-2">
                 <button
                   type="button"
@@ -86,7 +92,7 @@ export default function IdeasFeedback({ suggestions, setSuggestions, ownerMode, 
                   className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-colors cursor-pointer ${
                     form.type === 'idea'
                       ? 'bg-amber-500 text-white'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      : 'bg-surface-alt text-secondary hover:bg-surface-strong'
                   }`}
                 >
                   <Lightbulb size={16} />
@@ -98,7 +104,7 @@ export default function IdeasFeedback({ suggestions, setSuggestions, ownerMode, 
                   className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-colors cursor-pointer ${
                     form.type === 'feedback'
                       ? 'bg-blue-500 text-white'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      : 'bg-surface-alt text-secondary hover:bg-surface-strong'
                   }`}
                 >
                   <MessageSquare size={16} />
@@ -107,24 +113,24 @@ export default function IdeasFeedback({ suggestions, setSuggestions, ownerMode, 
               </div>
             </div>
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1">Title</label>
+              <label className="block text-sm font-semibold text-secondary mb-1">Title</label>
               <input
                 type="text"
                 required
                 value={form.title}
                 onChange={(e) => setForm({ ...form, title: e.target.value })}
-                className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-gray-900 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none transition"
+                className="w-full rounded-lg border border-border-strong px-4 py-2.5 text-primary focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none transition"
                 placeholder={form.type === 'idea' ? 'What\'s your idea?' : 'What could be better?'}
               />
             </div>
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1">Description</label>
+              <label className="block text-sm font-semibold text-secondary mb-1">Description</label>
               <textarea
                 required
                 rows={4}
                 value={form.description}
                 onChange={(e) => setForm({ ...form, description: e.target.value })}
-                className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-gray-900 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none transition resize-y"
+                className="w-full rounded-lg border border-border-strong px-4 py-2.5 text-primary focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none transition resize-y"
                 placeholder={form.type === 'idea' ? 'Describe your idea and how it helps the business...' : 'Describe the issue or what you\'d like to see improved...'}
               />
             </div>
@@ -132,7 +138,7 @@ export default function IdeasFeedback({ suggestions, setSuggestions, ownerMode, 
               <button
                 type="button"
                 onClick={() => { setAdding(false); setForm({ type: 'idea', title: '', description: '' }); }}
-                className="px-5 py-2.5 rounded-lg border border-gray-300 text-gray-700 font-medium hover:bg-gray-50 transition-colors cursor-pointer"
+                className="px-5 py-2.5 rounded-lg border border-border-strong text-secondary font-medium hover:bg-surface transition-colors cursor-pointer"
               >
                 Cancel
               </button>
@@ -147,7 +153,7 @@ export default function IdeasFeedback({ suggestions, setSuggestions, ownerMode, 
         </div>
       )}
 
-      <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-xl w-fit mb-6">
+      <div className="flex items-center gap-1 bg-surface-alt p-1 rounded-xl w-fit mb-6">
         {[
           { key: 'all', label: 'All' },
           { key: 'idea', label: 'Business Ideas' },
@@ -158,8 +164,8 @@ export default function IdeasFeedback({ suggestions, setSuggestions, ownerMode, 
             onClick={() => setFilter(t.key)}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer ${
               filter === t.key
-                ? 'bg-white text-gray-900 shadow-sm'
-                : 'text-gray-500 hover:text-gray-700'
+                ? 'bg-card text-primary shadow-sm'
+                : 'text-tertiary hover:text-secondary'
             }`}
           >
             {t.label}
@@ -168,9 +174,9 @@ export default function IdeasFeedback({ suggestions, setSuggestions, ownerMode, 
       </div>
 
       {filtered.length === 0 ? (
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-12 text-center">
-          <Lightbulb size={40} className="text-gray-200 mx-auto mb-3" />
-          <p className="text-gray-400 text-sm">
+        <div className="bg-card rounded-2xl shadow-sm border border-border-subtle p-12 text-center">
+          <Lightbulb size={40} className="text-muted mx-auto mb-3" />
+          <p className="text-muted text-sm">
             {suggestions.length === 0
               ? 'No submissions yet. Be the first to share an idea or give feedback!'
               : 'No submissions in this category.'}
@@ -181,7 +187,7 @@ export default function IdeasFeedback({ suggestions, setSuggestions, ownerMode, 
           {filtered.map((item) => (
             <div
               key={item.id}
-              className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5"
+              className="bg-card rounded-2xl shadow-sm border border-border-subtle p-5"
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="flex-1">
@@ -191,14 +197,14 @@ export default function IdeasFeedback({ suggestions, setSuggestions, ownerMode, 
                     ) : (
                       <MessageSquare size={16} className="text-blue-500 shrink-0" />
                     )}
-                    <h3 className="text-base font-bold text-gray-900">{item.title}</h3>
+                    <h3 className="text-base font-bold text-primary">{item.title}</h3>
                   </div>
-                  <p className="text-sm text-gray-600 mt-1 ml-6">{item.description}</p>
+                  <p className="text-sm text-secondary mt-1 ml-6">{item.description}</p>
                   <div className="flex items-center gap-3 mt-3 ml-6">
-                    <p className="text-xs text-gray-400">
+                    <p className="text-xs text-muted">
                       {item.submittedBy} &middot; {item.date}
                     </p>
-                    <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${STATUS_COLORS[item.status] || 'bg-gray-100 text-gray-600'}`}>
+                    <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${STATUS_COLORS[item.status] || 'bg-surface-alt text-secondary'}`}>
                       {item.status}
                     </span>
                   </div>
