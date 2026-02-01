@@ -1,23 +1,22 @@
 import { useState } from 'react';
-import { CheckSquare, Plus } from 'lucide-react';
+import { CheckSquare, Plus, Search } from 'lucide-react';
 import Card from '../components/Card';
 import ViewModal from '../components/ViewModal';
 import EditModal from '../components/EditModal';
 import { genId } from '../data';
 
-const STANDARD_CATEGORIES = ['Quality', 'Safety'];
-const POLICY_CATEGORIES = ['Professionalism', 'Conduct'];
-const ALL_CATEGORIES = [...STANDARD_CATEGORIES, ...POLICY_CATEGORIES];
+const CATEGORIES = ['Quality', 'Safety', 'Professionalism', 'Conduct'];
 
 export default function Standards({ items, setItems, ownerMode }) {
   const [viewing, setViewing] = useState(null);
   const [editing, setEditing] = useState(null);
   const [adding, setAdding] = useState(false);
-  const [filter, setFilter] = useState('standard');
+  const [search, setSearch] = useState('');
 
-  const filtered = items.filter((i) =>
-    filter === 'standard' ? i.type === 'standard' : i.type === 'policy'
-  );
+  const query = search.toLowerCase().trim();
+  const filtered = query
+    ? items.filter((i) => i.title?.toLowerCase().includes(query) || i.summary?.toLowerCase().includes(query))
+    : items;
 
   const handleDelete = (item) => {
     if (confirm(`Delete "${item.title}"?`)) {
@@ -26,11 +25,10 @@ export default function Standards({ items, setItems, ownerMode }) {
   };
 
   const handleSave = (form) => {
-    const type = STANDARD_CATEGORIES.includes(form.category) ? 'standard' : 'policy';
     if (editing) {
-      setItems(items.map((i) => (i.id === editing.id ? { ...i, ...form, type } : i)));
+      setItems(items.map((i) => (i.id === editing.id ? { ...i, ...form } : i)));
     } else {
-      setItems([...items, { id: genId(), ...form, type }]);
+      setItems([...items, { id: genId(), ...form }]);
     }
     setEditing(null);
     setAdding(false);
@@ -39,63 +37,58 @@ export default function Standards({ items, setItems, ownerMode }) {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-2">
-          <CheckSquare size={22} className="text-emerald-600" />
-          <h2 className="text-2xl font-bold text-gray-900">Standards & Policies</h2>
+        <div>
+          <div className="flex items-center gap-2">
+            <CheckSquare size={22} className="text-emerald-600" />
+            <h2 className="text-2xl font-bold text-gray-900">Standards</h2>
+          </div>
+          <p className="text-gray-500 mt-1">What's expected of our team</p>
         </div>
         {ownerMode && (
           <button
             onClick={() => setAdding(true)}
             className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 text-white font-medium text-sm hover:bg-emerald-700 transition-colors"
           >
-            <Plus size={18} /> Add {filter === 'standard' ? 'Standard' : 'Policy'}
+            <Plus size={18} /> Add Standard
           </button>
         )}
       </div>
 
-      <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-xl w-fit mb-6">
-        <button
-          onClick={() => setFilter('standard')}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-            filter === 'standard'
-              ? 'bg-white text-emerald-700 shadow-sm'
-              : 'text-gray-500 hover:text-gray-700'
-          }`}
-        >
-          Standards
-        </button>
-        <button
-          onClick={() => setFilter('policy')}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-            filter === 'policy'
-              ? 'bg-white text-blue-700 shadow-sm'
-              : 'text-gray-500 hover:text-gray-700'
-          }`}
-        >
-          Policies
-        </button>
+      <div className="relative mb-6">
+        <Search size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search standards..."
+          className="w-full rounded-xl border border-gray-200 bg-white pl-10 pr-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition"
+        />
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {filtered.map((item) => (
-          <Card
-            key={item.id}
-            item={item}
-            onClick={setViewing}
-            onEdit={setEditing}
-            onDelete={handleDelete}
-            ownerMode={ownerMode}
-            hideCategory
-          />
-        ))}
-      </div>
+      {filtered.length === 0 ? (
+        <p className="text-gray-400 text-sm">{query ? 'No standards match your search.' : 'No standards yet.'}</p>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {filtered.map((item) => (
+            <Card
+              key={item.id}
+              item={item}
+              onClick={setViewing}
+              onEdit={setEditing}
+              onDelete={handleDelete}
+              ownerMode={ownerMode}
+            />
+          ))}
+        </div>
+      )}
 
       {viewing && <ViewModal item={viewing} onClose={() => setViewing(null)} />}
       {(editing || adding) && (
         <EditModal
           item={editing}
-          categories={filter === 'standard' ? STANDARD_CATEGORIES : POLICY_CATEGORIES}
-          title={filter === 'standard' ? 'Standard' : 'Policy'}
+          categories={CATEGORIES}
+          title="Standard"
+          richText
           onSave={handleSave}
           onClose={() => { setEditing(null); setAdding(false); }}
         />

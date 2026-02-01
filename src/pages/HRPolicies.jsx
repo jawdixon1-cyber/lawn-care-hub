@@ -1,10 +1,9 @@
 import { useState } from 'react';
-import { ChevronRight, X, Calendar, Plus, Pencil, Trash2 } from 'lucide-react';
+import { ChevronRight, X, Calendar, Plus, Pencil, Trash2, Search } from 'lucide-react';
 import ViewModal from '../components/ViewModal';
 import EditModal from '../components/EditModal';
 import { genId } from '../data';
 
-const OWNER_NAME = 'Jude Wilson';
 const POLICY_CATEGORIES = ['Compensation', 'Time Off', 'Onboarding', 'Conduct', 'Training', 'Hiring'];
 
 export default function HRPolicies({ items, setItems, timeOffRequests, setTimeOffRequests, ownerMode, currentUser }) {
@@ -13,8 +12,9 @@ export default function HRPolicies({ items, setItems, timeOffRequests, setTimeOf
   const [addingPolicy, setAddingPolicy] = useState(false);
   const [requestingOff, setRequestingOff] = useState(false);
   const [form, setForm] = useState({ startDate: '', endDate: '', reason: '' });
+  const [search, setSearch] = useState('');
 
-  const isOwner = currentUser === OWNER_NAME;
+  const isOwner = ownerMode;
   const pendingCount = timeOffRequests.filter((r) => r.status === 'pending').length;
   const approvedCount = timeOffRequests.filter((r) => r.status === 'approved').length;
 
@@ -82,19 +82,17 @@ export default function HRPolicies({ items, setItems, timeOffRequests, setTimeOf
       </div>
 
       {/* Info Cards */}
-      <div className={`grid gap-4 ${isOwner ? 'md:grid-cols-2 lg:grid-cols-3' : 'md:grid-cols-2'} mb-8`}>
+      <div className={`grid gap-4 ${isOwner ? 'md:grid-cols-2' : ''} mb-8`}>
         <div className="rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-700 p-6 text-white">
           <h3 className="font-bold text-lg">Pay Schedule</h3>
-          <p className="text-white/80 text-sm mt-1">Every Friday via direct deposit</p>
-          <p className="text-2xl font-bold mt-3">Next Pay: Feb 2</p>
-        </div>
-        <div className="rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 p-6 text-white">
-          <h3 className="font-bold text-lg">Upcoming Holidays</h3>
-          <div className="text-white/80 text-sm mt-2 space-y-1">
-            <p>President's Day - Feb 17</p>
-            <p>Memorial Day - May 26</p>
-            <p>July 4th - Jul 4</p>
-          </div>
+          <p className="text-white/80 text-sm mt-1">Every Monday via direct deposit</p>
+          <p className="text-2xl font-bold mt-3">Next Pay: {(() => {
+            const d = new Date();
+            const day = d.getDay();
+            const diff = day === 0 ? 1 : day === 1 ? 7 : 8 - day;
+            d.setDate(d.getDate() + diff);
+            return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+          })()}</p>
         </div>
         {isOwner && (
           <div className="rounded-2xl bg-gradient-to-br from-pink-500 to-fuchsia-600 p-6 text-white">
@@ -180,9 +178,25 @@ export default function HRPolicies({ items, setItems, timeOffRequests, setTimeOf
             </button>
           )}
         </div>
-        <p className="text-gray-500 text-sm mb-6">Review company policies and procedures</p>
-        <div className="grid gap-4 md:grid-cols-2">
-          {items.map((item) => (
+        <p className="text-gray-500 text-sm mb-4">Review company policies and procedures</p>
+        <div className="relative mb-6">
+          <Search size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search policies..."
+            className="w-full rounded-xl border border-gray-200 bg-white pl-10 pr-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition"
+          />
+        </div>
+        {(() => {
+          const q = search.toLowerCase().trim();
+          const filtered = q
+            ? items.filter((i) => i.title?.toLowerCase().includes(q) || i.summary?.toLowerCase().includes(q))
+            : items;
+          if (filtered.length === 0) return <p className="text-gray-400 text-sm">{q ? 'No policies match your search.' : 'No policies yet.'}</p>;
+          return (<div className="grid gap-4 md:grid-cols-2">
+          {filtered.map((item) => (
             <div
               key={item.id}
               className="group relative flex items-start justify-between rounded-xl border border-gray-100 p-5 hover:shadow-md hover:border-gray-200 transition-all cursor-pointer"
@@ -213,7 +227,8 @@ export default function HRPolicies({ items, setItems, timeOffRequests, setTimeOf
               </div>
             </div>
           ))}
-        </div>
+        </div>);
+        })()}
       </div>
 
       {viewing && <ViewModal item={viewing} onClose={() => setViewing(null)} />}
@@ -223,6 +238,7 @@ export default function HRPolicies({ items, setItems, timeOffRequests, setTimeOf
           item={editing}
           categories={POLICY_CATEGORIES}
           title="Policy"
+          richText
           onSave={handleSavePolicy}
           onClose={() => { setEditing(null); setAddingPolicy(false); }}
         />

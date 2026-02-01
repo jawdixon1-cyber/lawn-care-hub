@@ -1,15 +1,5 @@
-import { Megaphone, ChevronRight, ClipboardCheck, AlertCircle } from 'lucide-react';
+import { Megaphone, ChevronRight, ClipboardCheck, AlertCircle, Lightbulb } from 'lucide-react';
 import ChecklistPanel from '../components/ChecklistPanel';
-
-const startOfDayItems = [
-  'Review daily route and job schedule',
-  'Inspect and fuel all equipment',
-  'Check oil levels and tire pressure',
-  'Load trucks with correct supplies and materials',
-  'Verify all PPE is available and in good condition',
-  'Check weather forecast and adjust plans if needed',
-  'Team huddle — review priorities and safety reminders',
-];
 
 const endOfDayItems = [
   'Clean all equipment and remove debris',
@@ -21,20 +11,19 @@ const endOfDayItems = [
   'Submit timesheet and mileage',
 ];
 
-export default function Home({ announcements, onNavigate }) {
+export default function Home({ announcements, onNavigate, teamChecklist }) {
   return (
     <div>
       <div className="bg-gradient-to-r from-emerald-600 to-emerald-800 rounded-2xl p-8 md:p-12 text-white mb-8">
-        <div className="flex items-center gap-4 mb-4">
-          <span className="text-5xl">🏡</span>
-          <div>
-            <h1 className="text-3xl md:text-4xl font-bold">Welcome to GreenTeam Hub</h1>
-            <p className="text-emerald-100 mt-1 text-lg">Your lawn care operations center</p>
-          </div>
+        <div className="mb-4">
+          <h1 className="text-3xl md:text-4xl font-bold">Welcome to HQ</h1>
+          <p className="text-emerald-100 mt-1 text-lg">Your lawn care operations center</p>
         </div>
         <p className="text-emerald-100 max-w-2xl">
-          Access company standards, how-to guides, equipment resources, and HR policies all in one place.
-          Stay informed with the latest announcements below.
+          Access company playbooks, standards, and HR policies all in one place.
+        </p>
+        <p className="text-white font-semibold mt-4 text-lg">
+          Review announcements, run through your checklist, and head to Jobber — every shift, every time.
         </p>
       </div>
 
@@ -43,6 +32,9 @@ export default function Home({ announcements, onNavigate }) {
         <h2 className="text-2xl font-bold text-gray-900">Announcements</h2>
       </div>
 
+      {announcements.length === 0 && (
+        <p className="text-gray-400 text-sm mb-6">No announcements right now.</p>
+      )}
       <div className="grid gap-4 md:grid-cols-2">
         {announcements.map((a) => (
           <div
@@ -81,11 +73,11 @@ export default function Home({ announcements, onNavigate }) {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
-        <ChecklistPanel title="Start of Day" items={startOfDayItems} />
+        <ChecklistPanel title="Start of Day" items={teamChecklist} />
         <ChecklistPanel title="End of Day" items={endOfDayItems} />
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 mt-6">
+      <div className="grid gap-4 md:grid-cols-3 mt-6">
         <a
           href="http://heyjudeslawncare.com/app"
           target="_blank"
@@ -107,6 +99,16 @@ export default function Home({ announcements, onNavigate }) {
             <p className="text-sm text-white/80 mt-1">Equipment needs repair</p>
           </div>
           <AlertCircle size={24} />
+        </button>
+        <button
+          onClick={() => onNavigate('ideas')}
+          className="flex items-center justify-between rounded-2xl bg-gradient-to-r from-purple-500 to-purple-700 p-6 text-white text-left hover:opacity-90 transition-opacity cursor-pointer"
+        >
+          <div>
+            <h3 className="text-lg font-bold">Submit Idea</h3>
+            <p className="text-sm text-white/80 mt-1">Suggest an improvement</p>
+          </div>
+          <Lightbulb size={24} />
         </button>
       </div>
     </div>

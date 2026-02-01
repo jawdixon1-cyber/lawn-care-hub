@@ -4,7 +4,7 @@ import { genId } from '../data';
 import AddEquipmentModal from '../components/AddEquipmentModal';
 import ReportRepairModal from '../components/ReportRepairModal';
 
-export default function EquipmentIdeas({ equipment, setEquipment, ideas, setIdeas, ownerMode, currentUser }) {
+export default function EquipmentIdeas({ equipment, setEquipment, ideas, setIdeas, ownerMode, currentUser, equipmentRepairLog, setEquipmentRepairLog }) {
   const [addingEquipment, setAddingEquipment] = useState(false);
   const [reportingRepair, setReportingRepair] = useState(false);
   const [addingIdea, setAddingIdea] = useState(false);
@@ -37,11 +37,24 @@ export default function EquipmentIdeas({ equipment, setEquipment, ideas, setIdea
 
   const handleMarkRepaired = (id) => {
     const today = new Date().toLocaleDateString('en-US');
+    const eq = equipment.find((e) => e.id === id);
+    if (eq && eq.reportedIssue) {
+      const logEntry = {
+        id: genId(),
+        equipmentName: eq.name,
+        issue: eq.reportedIssue,
+        reportedBy: eq.reportedBy || 'Unknown',
+        reportedDate: eq.reportedDate || today,
+        repairedDate: today,
+        urgency: eq.urgency || 'maintenance',
+      };
+      setEquipmentRepairLog((prev) => [logEntry, ...prev]);
+    }
     setEquipment(
-      equipment.map((eq) =>
-        eq.id === id
-          ? { ...eq, status: 'operational', lastMaintenance: today, reportedIssue: undefined, reportedBy: undefined, reportedDate: undefined, urgency: undefined, photo: undefined }
-          : eq
+      equipment.map((e) =>
+        e.id === id
+          ? { ...e, status: 'operational', lastMaintenance: today, reportedIssue: undefined, reportedBy: undefined, reportedDate: undefined, urgency: undefined, photo: undefined }
+          : e
       )
     );
   };

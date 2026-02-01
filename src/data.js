@@ -1,5 +1,4 @@
-let nextId = 100;
-export const genId = () => String(nextId++);
+export const genId = () => crypto.randomUUID();
 
 export const initialAnnouncements = [
   {
@@ -89,6 +88,82 @@ export const initialGuides = [
   },
 ];
 
+export const initialFieldOpsGuides = [
+  {
+    id: '26',
+    title: 'Pre-Job Site Walkthrough',
+    category: 'Service Work',
+    type: 'service',
+    content: '<h2>Pre-job site assessment procedure</h2><p>Every property gets a walkthrough before a single blade spins. This protects equipment, protects the crew, and sets the tone for a clean job.</p><ol><li>Walk the full perimeter of the turf area. Identify and flag any obstacles: sprinkler heads, pet waste, toys, hoses, landscape lighting.</li><li>Check for storm debris, fallen branches, or rocks that could become projectiles.</li><li>Note any soft or saturated areas — avoid rutting the turf with heavy mowers. If the ground is too wet, skip that zone and flag it for the next visit.</li><li>Identify gate access points and confirm zero-turn fitment. If the gate is under 48\", plan for walk-behind or 36\" stand-on.</li><li>Look for fresh sod, seed, or aeration plugs — adjust mowing height and avoid tight turns on new turf.</li><li>Check for bee/wasp activity near fence lines, eaves, and ground nests before trimming.</li><li>Note any irrigation running or scheduled — coordinate with the client or skip zones as needed.</li><li>Communicate any property changes to the crew lead before starting.</li></ol>',
+  },
+  {
+    id: '27',
+    title: 'Daily Route Execution',
+    category: 'Service Work',
+    type: 'service',
+    content: '<h2>Running an efficient route</h2><p>Time is money on the truck. A tight route means more jobs per day, less fuel, and earlier wrap times.</p><ol><li>Review the full route the night before. Confirm all stops are sequenced geographically — no backtracking.</li><li>Load trucks in reverse job order so the first stop\'s materials are on top and most accessible.</li><li>Target 15 minutes of mobilization time between stops. If drive time exceeds 20 minutes, flag for route optimization.</li><li>Crew lead assigns roles before arrival: mower operator, trimmer/edger, blower/detail. Rotate weekly to cross-train.</li><li>On arrival, mower drops the gate and starts the perimeter while trimmer begins edging hardscapes. Blower stages at the truck.</li><li>Track actual vs. budgeted man-hours per property. If a 0.25-acre residential consistently runs over 45 minutes with a 2-man crew, flag for re-scoping.</li><li>Skip properties only with crew lead + office confirmation. Log the reason (weather, access, client request) in Jobber immediately.</li><li>Fuel up at the end of the route, not the beginning. Morning time is prime production time.</li></ol>',
+  },
+  {
+    id: '28',
+    title: 'On-Site Client Protocol',
+    category: 'Service Work',
+    type: 'service',
+    content: '<h2>Client interaction on the job site</h2><p>Every client touchpoint is a chance to build trust or lose an account. Keep it professional, brief, and service-focused.</p><ol><li>If a client comes outside, shut down equipment before speaking. Never shout over a running mower.</li><li>Greet by name: "Good morning, Mrs. Johnson." If you don\'t know their name, check the Jobber work order.</li><li>If they have a concern or request, write it down. Don\'t rely on memory. Note it in Jobber and relay to the office.</li><li>Never quote pricing on-site. Say: "Great question — I\'ll have the office follow up with a quote for that." Then log it as an upsell lead.</li><li>If damage occurs (broken sprinkler head, nicked siding, etc.), own it immediately. Take a photo, notify the crew lead, and inform the client. Never leave without disclosure.</li><li>Don\'t discuss other clients\' properties, pricing, or schedules.</li><li>Before leaving, do a quick face-to-face if the client is home: "We\'re all wrapped up. Everything look good?" This closes the loop and catches issues early.</li></ol>',
+  },
+  {
+    id: '29',
+    title: 'Weather Calls & Rain Delays',
+    category: 'Service Work',
+    type: 'service',
+    content: '<h2>Making the call on weather days</h2><p>Rain days cost revenue. But mowing soaked turf costs more in callbacks, ruts, and clumped clippings. Here\'s how we make the call.</p><ol><li><strong>Check forecast at 5 AM.</strong> Use a reliable source (Weather.com, local radar). Look at hourly precipitation, not just "chance of rain."</li><li><strong>Light drizzle (under 0.1"/hr):</strong> Roll out. Turf handles it, and clippings disperse fine. Avoid slopes with zero-turns.</li><li><strong>Steady rain (0.1–0.25"/hr):</strong> Delay 2 hours and reassess. If it clears, start the route. If not, push to the next available day.</li><li><strong>Heavy rain or thunderstorms:</strong> Stand down. No exceptions. Lightning is a crew safety issue — period.</li><li><strong>Post-rain:</strong> Wait until turf passes the boot test — step on the lawn, and if your boot leaves a visible impression, it\'s too soft. Give it another hour.</li><li>When pushing a day, update Jobber immediately and notify affected clients via GHL text blast.</li><li><strong>Heat protocol:</strong> Above 95°F, enforce mandatory 15-minute shade/water breaks every 45 minutes. Watch for heat exhaustion signs: dizziness, nausea, confusion. Pull anyone showing symptoms immediately.</li><li>Log all weather delays in Jobber with the reason code. This data informs seasonal scheduling adjustments.</li></ol>',
+  },
+  {
+    id: '30',
+    title: 'Job Closeout & QC Walk',
+    category: 'Service Work',
+    type: 'service',
+    content: '<h2>Closing out a property the right way</h2><p>The last 5 minutes on a property are what the client sees. A sloppy closeout erases an hour of good work.</p><ol><li><strong>Blow-off everything:</strong> All hardscapes — driveway, sidewalks, porches, patios, curb line. No clippings left on concrete. Ever.</li><li><strong>Bed cleanup:</strong> Blow clippings out of mulch beds and off landscape rock. Check for trimmer debris in beds.</li><li><strong>Stripe check:</strong> Stand at the curb and look at the mow pattern. Are the stripes straight and consistent? If not, touch up.</li><li><strong>Edge inspection:</strong> Walk the sidewalk and driveway edges. Look for missed spots, scalloping, or uneven lines.</li><li><strong>Gate and access:</strong> Close all gates. Replace anything you moved — hoses, furniture, decorations, trash cans.</li><li><strong>Before/after photos:</strong> Take the "after" from the same angle as the "before." Upload to Jobber before leaving the property.</li><li><strong>Final curb check:</strong> Stand at the street and look at the property like a client would. Would you be proud to put your name on this? If not, fix it.</li><li>Mark the job complete in Jobber with any notes (turf stress, irrigation issue, client request).</li></ol>',
+  },
+];
+
+export const initialPMEGuides = [
+  {
+    id: '31',
+    title: 'Property Take-Off & Measurement',
+    category: 'Quoting & Sales',
+    type: 'pme',
+    content: '<h2>Measuring properties for accurate estimates</h2><p>A bad take-off means you\'re either leaving money on the table or pricing yourself out. Measure twice, quote once.</p><ol><li><strong>Satellite take-off first:</strong> Use Google Earth or Go iLawn to measure total lot area, turf area, bed area, and linear feet of edging before visiting the property.</li><li><strong>Turf area:</strong> Calculate total mowable square footage. Subtract hardscapes (driveway, house footprint, patios), beds, and non-serviceable areas.</li><li><strong>Linear feet:</strong> Measure all edge lines — sidewalk edges, driveway edges, bed edges, curb lines. This drives trimming and edging time.</li><li><strong>Obstacle count:</strong> Count trees, light posts, AC units, mailboxes, and anything requiring trimmer detailing. Each obstacle adds ~30 seconds per visit.</li><li><strong>Slope assessment:</strong> Note any grades. Slopes over 15° require walk-behind mowing, which is slower. Factor 1.5x time for sloped areas.</li><li><strong>Access constraints:</strong> Measure gate widths. If no rear access, the crew walks equipment around — add mobilization time.</li><li><strong>Ground-truth the take-off:</strong> Visit the property to verify satellite measurements. Satellite images can be outdated — new fences, additions, or landscaping changes are common.</li><li>Document everything in the CRM with photos and measurements. This is your pricing foundation.</li></ol>',
+  },
+  {
+    id: '32',
+    title: 'Estimating & Pricing',
+    category: 'Quoting & Sales',
+    type: 'pme',
+    content: '<h2>Building profitable estimates</h2><p>Every estimate needs to cover labor, materials, overhead, and profit. If the math doesn\'t work, the job doesn\'t work.</p><ol><li><strong>Calculate man-hours:</strong> Use your take-off data. Baseline: a 2-person crew handles ~8,000 sq ft of turf per hour (mow + trim + blow). Adjust for obstacles and slopes.</li><li><strong>Labor cost:</strong> Man-hours × fully burdened labor rate (hourly wage + payroll taxes + workers\' comp + benefits). Don\'t use base wage — use the loaded rate.</li><li><strong>Materials:</strong> Estimate fuel, trimmer line, blade wear, and any consumables per visit.</li><li><strong>Mobilization:</strong> Include drive time from the previous stop. A 15-minute drive at $1.50/mile with a crew of 2 adds real cost.</li><li><strong>Overhead allocation:</strong> Insurance, truck payment, equipment depreciation, software, office costs. Apply your overhead rate (typically 15–25% of direct costs).</li><li><strong>Profit margin:</strong> Target minimum 20% net margin on maintenance. Premium services (aeration, overseeding, fert programs) should target 35%+.</li><li><strong>Price check:</strong> Sanity-check against your $/sq ft benchmarks. Residential mowing typically runs $0.004–$0.008 per sq ft per visit depending on your market.</li><li>Round to clean numbers. $47 becomes $50. Clients don\'t want to see pennies — it looks like guesswork.</li></ol>',
+  },
+  {
+    id: '33',
+    title: 'Writing Proposals & SOWs',
+    category: 'Quoting & Sales',
+    type: 'pme',
+    content: '<h2>Proposals that close</h2><p>A proposal isn\'t a price sheet — it\'s a sales document. It should make the client feel confident, informed, and ready to sign.</p><ol><li><strong>Lead with the problem:</strong> "Your property at 123 Main has approximately 12,000 sq ft of turf that requires weekly maintenance to maintain curb appeal and property value."</li><li><strong>Define the scope of work (SOW):</strong> Be specific. "Weekly mowing at 3.5" height, string trimming around 14 obstacles, rotary edging of 280 linear feet of sidewalk/driveway, and full hardscape blow-off."</li><li><strong>Frequency and season:</strong> State the service window clearly. "42 weekly visits, March 15 through December 15" or "Year-round bi-weekly maintenance."</li><li><strong>Pricing structure:</strong> Present as monthly recurring. $200/month reads better than $50/visit × 4. MRR framing builds sticky contracts.</li><li><strong>Include what\'s NOT included:</strong> "This proposal does not include leaf cleanup, aeration, overseeding, or fertilization." This prevents scope creep and opens upsell doors.</li><li><strong>Social proof:</strong> Include a testimonial or "Serving 50+ properties in [neighborhood]" to build trust.</li><li><strong>Call to action:</strong> "Sign below or reply \'approved\' to get on the schedule. We can typically start within 5 business days."</li><li>Send proposals within 24 hours of the site visit. Speed wins deals.</li></ol>',
+  },
+  {
+    id: '34',
+    title: 'Upselling & Cross-Selling',
+    category: 'Quoting & Sales',
+    type: 'pme',
+    content: '<h2>Growing revenue on existing accounts</h2><p>Your cheapest new revenue is from clients who already trust you. Upselling isn\'t pushy — it\'s proactive service.</p><ol><li><strong>Spot opportunities in the field:</strong> Thin turf → overseeding. Compacted soil → aeration. Bare beds → mulch install. Overgrown shrubs → trimming package. Train crews to flag these in Jobber notes.</li><li><strong>Seasonal triggers:</strong><ul><li><strong>Spring:</strong> Aeration, overseeding, pre-emergent application, bed mulching, spring cleanup</li><li><strong>Summer:</strong> Irrigation checks, grub treatment, fungicide application</li><li><strong>Fall:</strong> Leaf cleanup packages, aeration + overseed combo, fall fertilization</li><li><strong>Winter:</strong> Holiday lighting, snow removal, dormant pruning</li></ul></li><li><strong>Bundle pricing:</strong> "Add aeration + overseeding to your fall plan for $X — 15% less than booking separately." Bundles increase average ticket and lock in work.</li><li><strong>The 90-day touchpoint:</strong> After 90 days of service, send a personalized message: "Your lawn\'s looking great. I noticed your beds could use a fresh layer of mulch — want me to put together a quick quote?"</li><li><strong>Track conversion:</strong> Log every upsell attempt and outcome in GHL. Know your close rate so you can improve your pitch and timing.</li></ol>',
+  },
+  {
+    id: '35',
+    title: 'Client Follow-Up & Closing',
+    category: 'Quoting & Sales',
+    type: 'pme',
+    content: '<h2>Following up without being annoying</h2><p>Most quotes don\'t close on the first touch. The follow-up sequence is where revenue is won or lost.</p><ol><li><strong>Same-day send:</strong> Proposal goes out within 24 hours of the site visit. Include a personal note referencing something specific about their property.</li><li><strong>Day 2 — Soft check-in:</strong> Text (not email): "Hi [Name], just wanted to make sure you received the proposal. Happy to answer any questions!"</li><li><strong>Day 5 — Value add:</strong> Send a helpful tip related to their property: "Quick tip — with the warm weather coming, bumping your mowing height to 3.5\\" will help your fescue hold moisture better." This builds authority.</li><li><strong>Day 10 — Direct ask:</strong> "Hey [Name], wanted to check in on the lawn care proposal. We\'ve got a few openings on our [Day] route in your area. Want me to pencil you in?"</li><li><strong>Day 20 — Last touch:</strong> "Hi [Name], I\'m closing out open proposals this week. If now isn\'t the right time, no worries — we\'ll be here when you\'re ready. Just reply \'go\' whenever you want to get started."</li><li><strong>If no response:</strong> Move to a nurture sequence — monthly value emails or texts. Don\'t keep chasing.</li><li><strong>If they say no:</strong> Ask why. Price? Timing? Going with someone else? This data improves your future estimates and pitch. Log the lost reason in GHL.</li><li>Track your close rate by lead source. Know which channels (referral, Google, door knock, Nextdoor) produce the highest conversion.</li></ol>',
+  },
+];
+
 export const initialEquipment = [
   {
     id: '30',
@@ -147,7 +222,7 @@ export const initialPolicies = [
     title: 'Time Off & Scheduling',
     category: 'Time Off',
     summary: 'Vacation, sick time, holidays, and 2-week notice requirements.',
-    content: `Paid time off accrual and usage policy:\n\nAccrual Rates:\n- 0-1 years: 5 days PTO per year\n- 1-3 years: 10 days PTO per year\n- 3-5 years: 15 days PTO per year\n- 5+ years: 20 days PTO per year\n\nRules:\n- PTO requests must be submitted at least 2 weeks in advance.\n- No more than 2 crew members from the same team may be off simultaneously.\n- Peak season (April-October) PTO is limited and subject to approval.\n- Unused PTO carries over up to 5 days maximum.\n- Sick days: 3 paid sick days per year, no advance notice required.\n- Unpaid leave may be granted for special circumstances with manager approval.`,
+    content: `Time off accrual and usage policy:\n\nAccrual Rates:\n- 0-1 years: 5 days per year\n- 1-3 years: 10 days per year\n- 3-5 years: 15 days per year\n- 5+ years: 20 days per year\n\nRules:\n- Time off requests must be submitted at least 2 weeks in advance.\n- No more than 2 crew members from the same team may be off simultaneously.\n- Peak season (April-October) time off is limited and subject to approval.\n- Unused days carry over up to 5 days maximum.\n- Sick days: 3 paid sick days per year, no advance notice required.\n- Unpaid leave may be granted for special circumstances with manager approval.`,
   },
   {
     id: '52',
@@ -222,3 +297,15 @@ export const initialOwnerEndChecklist = [
   { id: 'ed-15', text: "Review tomorrow's list on mobile Jobber for all members", type: 'item', indent: 0, done: false },
   { id: 'ed-16', text: 'Write my top 3 for tomorrow', type: 'item', indent: 0, done: false },
 ];
+
+export const initialTeamChecklist = [
+  { id: 'tc-1', text: 'Review daily route and job schedule' },
+  { id: 'tc-2', text: 'Inspect and fuel all equipment' },
+  { id: 'tc-3', text: 'Check oil levels and tire pressure' },
+  { id: 'tc-4', text: 'Load trucks with correct supplies and materials' },
+  { id: 'tc-5', text: 'Verify all PPE is available and in good condition' },
+  { id: 'tc-6', text: 'Check weather forecast and adjust plans if needed' },
+  { id: 'tc-7', text: 'Team huddle — review priorities and safety reminders' },
+];
+
+export const initialEquipmentRepairLog = [];
