@@ -3,12 +3,10 @@ import {
   ChevronDown,
   ClipboardList,
   Briefcase,
-  Target,
   AlertTriangle,
 } from 'lucide-react';
 import ManagementSection from '../components/owner/ManagementSection';
 import MyDaySection from '../components/owner/MyDaySection';
-import StrategySection from '../components/owner/StrategySection';
 import { genId } from '../data';
 import { useAppStore } from '../store/AppStoreContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -35,7 +33,6 @@ export default function OwnerDashboard() {
   const [showActionRequired, setShowActionRequired] = useState(true);
   const [showManagement, setShowManagement] = useState(false);
   const [showMyDay, setShowMyDay] = useState(false);
-  const [showStrategy, setShowStrategy] = useState(false);
 
   const pendingPTO = timeOffRequests.filter((r) => r.status === 'pending');
   const repairEquipment = equipment.filter((e) => e.status === 'needs-repair');
@@ -185,8 +182,8 @@ export default function OwnerDashboard() {
               if (item.kind === 'idea') {
                 const idea = item.data;
                 return (
-                  <div key={`idea-${idea.id}`} className="rounded-xl border border-border-subtle p-4">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-purple-500">Team Idea</span>
+                  <div key={`idea-${idea.id}`} className="rounded-xl border border-purple-300 bg-purple-50 p-4">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-purple-600">Team Idea</span>
                     <h4 className="font-bold text-primary mt-1">{idea.title}</h4>
                     <p className="text-sm text-secondary mt-0.5">{idea.description}</p>
                     <p className="text-xs text-muted mt-1">By {idea.submittedBy} &middot; {idea.date}</p>
@@ -262,7 +259,7 @@ export default function OwnerDashboard() {
       >
         <div className="flex items-center gap-2">
           <ClipboardList size={20} className="text-muted" />
-          <h2 className="text-xl font-bold text-primary">Team</h2>
+          <h2 className="text-xl font-bold text-primary">Team Management</h2>
         </div>
         <div className="flex-1 h-px bg-border-default" />
         <ChevronDown
@@ -280,7 +277,7 @@ export default function OwnerDashboard() {
       >
         <div className="flex items-center gap-2">
           <Briefcase size={20} className="text-muted" />
-          <h2 className="text-xl font-bold text-primary">My Routine</h2>
+          <h2 className="text-xl font-bold text-primary">Me</h2>
         </div>
         <div className="flex-1 h-px bg-border-default" />
         <ChevronDown
@@ -290,24 +287,6 @@ export default function OwnerDashboard() {
       </button>
 
       {showMyDay && <MyDaySection />}
-
-      {/* Strategy */}
-      <button
-        onClick={() => setShowStrategy((v) => !v)}
-        className="flex items-center gap-3 pt-4 w-full cursor-pointer group"
-      >
-        <div className="flex items-center gap-2">
-          <Target size={20} className="text-muted" />
-          <h2 className="text-xl font-bold text-primary">Big Picture</h2>
-        </div>
-        <div className="flex-1 h-px bg-border-default" />
-        <ChevronDown
-          size={20}
-          className={`text-muted group-hover:text-secondary transition-transform duration-200 ${showStrategy ? '' : '-rotate-90'}`}
-        />
-      </button>
-
-      {showStrategy && <StrategySection />}
 
       {/* Apps — horizontal scroll on mobile only */}
       <div className="lg:hidden">

@@ -4,6 +4,7 @@ import {
   Lightbulb,
   Calendar,
   ClipboardList,
+  CalendarOff,
   Pencil,
   Megaphone,
 } from 'lucide-react';
@@ -77,13 +78,6 @@ export default function ManagementSection() {
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-3">
         <button
-          onClick={() => navigate('/hr')}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-border-default bg-card text-secondary text-sm font-semibold hover:bg-surface hover:border-border-strong transition-colors cursor-pointer shadow-sm"
-        >
-          <Calendar size={16} className="text-cyan-500" />
-          Time Off
-        </button>
-        <button
           onClick={() => navigate('/equipment')}
           className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-border-default bg-card text-secondary text-sm font-semibold hover:bg-surface hover:border-border-strong transition-colors cursor-pointer shadow-sm"
         >
@@ -96,6 +90,13 @@ export default function ManagementSection() {
         >
           <Lightbulb size={16} className="text-amber-500" />
           Ideas
+        </button>
+        <button
+          onClick={() => navigate('/hr')}
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-border-default bg-card text-secondary text-sm font-semibold hover:bg-surface hover:border-border-strong transition-colors cursor-pointer shadow-sm"
+        >
+          <CalendarOff size={16} className="text-cyan-500" />
+          Time Off
         </button>
         <div className="w-px h-6 bg-border-strong mx-12 hidden sm:block" />
         <button

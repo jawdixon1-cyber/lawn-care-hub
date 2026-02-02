@@ -23,8 +23,8 @@ export default function HRPolicies() {
   const [search, setSearch] = useState('');
 
   const isOwner = ownerMode;
-  const pendingCount = timeOffRequests.filter((r) => r.status === 'pending').length;
-  const approvedCount = timeOffRequests.filter((r) => r.status === 'approved').length;
+  const pendingCount = isOwner ? timeOffRequests.filter((r) => r.status === 'pending').length : 0;
+  const approvedCount = isOwner ? timeOffRequests.filter((r) => r.status === 'approved').length : 0;
 
   const handleApprove = (id) => {
     setTimeOffRequests(timeOffRequests.map((r) => (r.id === id ? { ...r, status: 'approved' } : r)));
@@ -90,26 +90,15 @@ export default function HRPolicies() {
       </div>
 
       {/* Info Cards */}
-      <div className={`grid gap-4 ${isOwner ? 'md:grid-cols-2' : ''} mb-8`}>
-        <div className="rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-700 p-6 text-white">
-          <h3 className="font-bold text-lg">Pay Schedule</h3>
-          <p className="text-white/80 text-sm mt-1">Every Monday via direct deposit</p>
-          <p className="text-2xl font-bold mt-3">Next Pay: {(() => {
-            const d = new Date();
-            const day = d.getDay();
-            const diff = day === 0 ? 1 : day === 1 ? 7 : 8 - day;
-            d.setDate(d.getDate() + diff);
-            return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-          })()}</p>
-        </div>
-        {isOwner && (
+      {isOwner && (
+        <div className="mb-8">
           <div className="rounded-2xl bg-gradient-to-br from-pink-500 to-fuchsia-600 p-6 text-white">
             <h3 className="font-bold text-lg">Time Off Overview</h3>
             <p className="text-white/80 text-sm mt-1">{pendingCount} pending</p>
             <p className="text-2xl font-bold mt-1">{approvedCount} approved</p>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Time Off Requests - Owner Only */}
       {isOwner && (

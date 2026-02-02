@@ -230,13 +230,6 @@ export const initialIdeas = [
 
 export const initialPolicies = [
   {
-    id: '50',
-    title: 'Pay & Benefits',
-    category: 'Compensation',
-    summary: 'Pay schedule, overtime, mileage reimbursement policies.',
-    content: `Pay & Benefits Policy:\n\nPay Schedule:\n- Paid every Friday via direct deposit.\n- Pay period runs Monday through Sunday.\n\nOvertime:\n- Overtime applies after 40 hours per week.\n- Overtime rate is 1.5x regular hourly rate.\n- All overtime must be pre-approved by your crew lead.\n\nMileage Reimbursement:\n- Reimbursed at the current IRS rate for approved travel.\n- Log all mileage in the daily timesheet.\n- Travel between job sites during the workday is reimbursable.\n- Commute to and from the shop is not reimbursable.`,
-  },
-  {
     id: '51',
     title: 'Time Off & Scheduling',
     category: 'Time Off',
@@ -340,3 +333,142 @@ export const initialTeamEndChecklist = [
 ];
 
 export const initialChecklistLog = [];
+
+// ─── Buyback Principle ───
+
+export function calculateQuadrant(energyScore, valueScore) {
+  const highEnergy = energyScore >= 3;
+  const highValue = valueScore >= 3;
+  if (highEnergy && highValue) return 'production';
+  if (highEnergy && !highValue) return 'replacement';
+  if (!highEnergy && highValue) return 'delegation';
+  return 'elimination';
+}
+
+export const QUADRANT_META = {
+  production: {
+    label: 'Production',
+    subtitle: 'The Gold — keep doing',
+    bg: 'bg-emerald-50',
+    border: 'border-emerald-200',
+    text: 'text-emerald-700',
+    badgeBg: 'bg-emerald-100',
+    badgeText: 'text-emerald-800',
+    dotColor: 'bg-emerald-500',
+  },
+  replacement: {
+    label: 'Replacement',
+    subtitle: 'Enjoy but low value — train someone',
+    bg: 'bg-amber-50',
+    border: 'border-amber-200',
+    text: 'text-amber-700',
+    badgeBg: 'bg-amber-100',
+    badgeText: 'text-amber-800',
+    dotColor: 'bg-amber-500',
+  },
+  delegation: {
+    label: 'Delegation',
+    subtitle: 'Valuable but draining — delegate w/ SOP',
+    bg: 'bg-blue-50',
+    border: 'border-blue-200',
+    text: 'text-blue-700',
+    badgeBg: 'bg-blue-100',
+    badgeText: 'text-blue-800',
+    dotColor: 'bg-blue-500',
+  },
+  elimination: {
+    label: 'Elimination',
+    subtitle: 'Stop doing entirely',
+    bg: 'bg-red-50',
+    border: 'border-red-200',
+    text: 'text-red-700',
+    badgeBg: 'bg-red-100',
+    badgeText: 'text-red-800',
+    dotColor: 'bg-red-500',
+  },
+};
+
+export const QUADRANT_SCORE_RANGES = {
+  production:  { energy: [3, 5], value: [3, 5] },
+  replacement: { energy: [3, 5], value: [1, 2] },
+  delegation:  { energy: [1, 2], value: [3, 5] },
+  elimination: { energy: [1, 2], value: [1, 2] },
+};
+
+export const BUYBACK_STATUS_META = {
+  backlog: { label: 'Backlog', bg: 'bg-gray-100', text: 'text-gray-700' },
+  'this-week': { label: 'This Week', bg: 'bg-indigo-100', text: 'text-indigo-700' },
+  'in-progress': { label: 'In Progress', bg: 'bg-amber-100', text: 'text-amber-700' },
+  done: { label: 'Done', bg: 'bg-emerald-100', text: 'text-emerald-700' },
+};
+
+export const initialBuybackIdeas = [
+  {
+    id: 'bb-1',
+    title: 'Close high-value sales calls',
+    description: 'Personal phone calls with premium residential and commercial leads. High conversion rate when I handle them directly.',
+    energyScore: 5,
+    valueScore: 5,
+    quadrant: 'production',
+    sopLink: '',
+    status: 'this-week',
+    assignedTo: '',
+    scheduledTime: '',
+    weekOf: '',
+    createdAt: '2026-01-20T08:00:00.000Z',
+    updatedAt: '2026-01-20T08:00:00.000Z',
+    notes: '',
+    archived: false,
+  },
+  {
+    id: 'bb-2',
+    title: 'Morning equipment inspections',
+    description: 'Walking the yard every morning checking mower blades, oil, tire pressure. Enjoy doing it but any crew lead could handle this.',
+    energyScore: 4,
+    valueScore: 2,
+    quadrant: 'replacement',
+    sopLink: '',
+    status: 'backlog',
+    assignedTo: '',
+    scheduledTime: '',
+    weekOf: '',
+    createdAt: '2026-01-21T08:00:00.000Z',
+    updatedAt: '2026-01-21T08:00:00.000Z',
+    notes: 'Need to create SOP video before handing off',
+    archived: false,
+  },
+  {
+    id: 'bb-3',
+    title: 'Weekly invoicing and payment follow-ups',
+    description: 'Sending invoices through Jobber, chasing overdue payments, reconciling in QuickBooks. Critical for cash flow but drains me.',
+    energyScore: 1,
+    valueScore: 4,
+    quadrant: 'delegation',
+    sopLink: '',
+    status: 'backlog',
+    assignedTo: '',
+    scheduledTime: '',
+    weekOf: '',
+    createdAt: '2026-01-22T08:00:00.000Z',
+    updatedAt: '2026-01-22T08:00:00.000Z',
+    notes: 'Could hire a part-time bookkeeper or VA',
+    archived: false,
+  },
+  {
+    id: 'bb-4',
+    title: 'Manually updating social media bios',
+    description: 'Tweaking Facebook, Instagram, and Google Business profile text. Low impact, nobody reads it, and I dread doing it.',
+    energyScore: 1,
+    valueScore: 1,
+    quadrant: 'elimination',
+    sopLink: '',
+    status: 'backlog',
+    assignedTo: '',
+    scheduledTime: '',
+    weekOf: '',
+    createdAt: '2026-01-23T08:00:00.000Z',
+    updatedAt: '2026-01-23T08:00:00.000Z',
+    notes: 'Set it once and forget it, or just stop doing it',
+    archived: false,
+  },
+];
