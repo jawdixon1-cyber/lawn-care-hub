@@ -34,3 +34,11 @@ export function useAppStore(selector) {
   if (!store) throw new Error('useAppStore must be used within AppStoreProvider');
   return useStore(store, selector);
 }
+
+// Access the raw store — exposes hydrateFromCloud for force-refreshing from Supabase
+// without going through setters (which would write back).
+export function useStoreHandle() {
+  const store = useContext(AppStoreContext);
+  if (!store) throw new Error('useStoreHandle must be used within AppStoreProvider');
+  return store;
+}

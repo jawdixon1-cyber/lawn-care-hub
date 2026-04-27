@@ -7,7 +7,8 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { useAppStore } from '../store/AppStoreContext';
+import { useAppStore, useStoreHandle } from '../store/AppStoreContext';
+import { supabase } from '../lib/supabase';
 import { ONBOARDING_STEPS } from '../utils/onboarding';
 
 const TeamAgreement = lazy(() => import('./TeamAgreement'));
@@ -59,8 +60,10 @@ export default function TeamManagement() {
   const strikes = useAppStore((s) => s.strikes);
   const presence = useAppStore((s) => s.presence);
   const signedAgreements = useAppStore((s) => s.signedAgreements) || [];
+  const setSignedAgreements = useAppStore((s) => s.setSignedAgreements);
   const agreementConfig = useAppStore((s) => s.agreementConfig);
-  const currentAgreementVersion = agreementConfig?.version || null;
+  const agreementPdf = useAppStore((s) => s.agreementPdf);
+  const currentAgreementVersion = agreementPdf?.version || agreementConfig?.version || null;
 
   // Add member form state
   const [showForm, setShowForm] = useState(false);
@@ -97,6 +100,26 @@ export default function TeamManagement() {
       .then((d) => { if (d.users) setAuthUsers(d.users); })
       .catch(() => {});
   }, []);
+
+  // Auto-refresh signedAgreements + permissions + applications on mount so the
+  // owner sees fresh sign-in/signed status without needing a hard refresh.
+  const storeHandle = useStoreHandle();
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data, error } = await supabase
+          .from('app_state')
+          .select('key, value')
+          .in('key', ['greenteam-signedAgreements', 'greenteam-permissions', 'greenteam-applications', 'greenteam-agreementPdf']);
+        if (error || cancelled) return;
+        const cloudPatch = {};
+        for (const row of data || []) cloudPatch[row.key] = row.value;
+        storeHandle.hydrateFromCloud?.(cloudPatch);
+      } catch {}
+    })();
+    return () => { cancelled = true; };
+  }, [storeHandle]);
 
   // Non-owners shouldn't see this page — bounce them to Home silently.
   useEffect(() => {
