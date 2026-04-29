@@ -1447,6 +1447,9 @@ function scoreApplication(data) {
   if (Array.isArray(skills) && skills.length > 3 && !skills.includes('NO EXPERIENCE')) { greens.push(skills.length + ' skills'); score += 1; }
   if (Array.isArray(skills) && skills.includes('NO EXPERIENCE')) flags.push('No experience');
 
+  if (data.drug_nicotine_policy === 'No') { flags.push('Won\'t commit to drug/nicotine-free'); score -= 4; }
+  if (data.availability === 'No') flags.push('Can\'t do weekdays + occasional Saturdays');
+  // Backward compat with old form
   if (data.tobacco_use === 'Yes') { flags.push('Uses nicotine'); score -= 2; }
   if (data.tobacco_use === 'Yes' && data.tobacco_policy !== 'Yes') flags.push('Won\'t follow substance policy');
 
@@ -1918,10 +1921,25 @@ function ApplicationsTab() {
                   (form?.steps || []).forEach((s) => (s.fields || []).forEach((f) => knownIds.add(f.id)));
                   const extraKeys = Object.keys(selected.data || {}).filter((k) => !knownIds.has(k));
                   let qNum = 0;
+                  const FRIENDLY_LABELS = {
+                    drug_nicotine_policy: 'Commits to drug/nicotine-free policy?',
+                    availability: 'Available weekdays + occasional Saturdays?',
+                    why_this_job: 'Why do you want THIS job specifically?',
+                    intro_video: 'Intro video (optional)',
+                    intro_video_url: 'Intro video link',
+                    recent_start: 'Last job — start date',
+                    recent_end: 'Last job — end date',
+                    recent_current: 'Still works there?',
+                    recent_company: 'Last job — company',
+                    recent_title: 'Last job — role',
+                    manager_name: 'Supervisor / who they reported to',
+                    manager_phone: 'Supervisor phone',
+                    reason_leaving: 'Reason for leaving / looking',
+                  };
                   const renderAnswer = (f, k, val, labelOverride) => {
-                    const label = labelOverride || (f ? (f.label.includes('\n') ? f.label.split('\n')[0].slice(0, 80) : f.label) : humanize(k));
+                    const label = labelOverride || FRIENDLY_LABELS[k] || (f ? (f.label.includes('\n') ? f.label.split('\n')[0].slice(0, 80) : f.label) : humanize(k));
                     const hasVal = val !== undefined && val !== null && val !== '' && !(Array.isArray(val) && val.length === 0);
-                    const isRedFlag = hasVal && ((k === 'physical_ability' && val === 'No') || (k === 'drivers_license' && val === 'No') || (k === 'fulltime_understand' && val === 'No') || (k === 'background_check' && val === 'Yes') || (k === 'tobacco_use' && val === 'Yes') || (k === 'tobacco_policy' && val === 'No') || (k === 'injuries' && val === 'Yes'));
+                    const isRedFlag = hasVal && ((k === 'physical_ability' && val === 'No') || (k === 'drivers_license' && val === 'No') || (k === 'fulltime_understand' && val === 'No') || (k === 'background_check' && val === 'Yes') || (k === 'tobacco_use' && val === 'Yes') || (k === 'tobacco_policy' && val === 'No') || (k === 'injuries' && val === 'Yes') || (k === 'drug_nicotine_policy' && val === 'No') || (k === 'availability' && val === 'No'));
                     const isGreen = hasVal && ((k === 'years_landscaping' && (val === '3-5 years' || val === '5+ years')) || (k === 'landscaping_experience' && val === 'Yes') || (k === 'leadership_exp' && val === 'Yes') || (k === 'how_long' && (val === '1+ years' || val === 'Long-term / as long as it works')));
                     let displayVal = Array.isArray(val) ? val.join(', ') : (val == null ? '' : String(val));
                     if (f?.type === 'phone' || /phone/i.test(k)) {
@@ -2100,7 +2118,16 @@ function ApplicationsTab() {
                       {phoneScreenQuestions.map((q) => {
                         const firstName = (selected.data?.first_name || (selected.data?.name || '').split(' ')[0] || '').trim();
                         const rawDates = selected.data?.recent_dates;
-                        const duration = formatLookingDuration(parseEndDate(rawDates));
+                        const rawEnd = selected.data?.recent_end;
+                        const isCurrent = !!selected.data?.recent_current;
+                        let endDate;
+                        if (isCurrent) endDate = 'present';
+                        else if (rawEnd) {
+                          const [yy, mm] = String(rawEnd).split('-').map(Number);
+                          if (yy && mm) endDate = new Date(yy, mm - 1, 15);
+                        }
+                        if (!endDate && rawDates) endDate = parseEndDate(rawDates);
+                        const duration = formatLookingDuration(endDate);
                         let label = q.label || '';
                         let hint = null;
                         if (firstName) label = label.replace(/\[name\]/gi, firstName);

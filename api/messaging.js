@@ -49,17 +49,33 @@ async function handleGetUploadUrl(req, res) {
   }
 }
 
-/* ─── Ensure Supabase Storage bucket exists (for resumes) ─── */
+/* ─── Ensure Supabase Storage bucket exists ─── */
 async function handleEnsureBucket(req, res) {
   const name = req.query?.name || req.body?.name || 'resumes';
+  // Per-bucket config — videos need bigger size cap and different mime types.
+  const BUCKET_CONFIGS = {
+    videos: {
+      fileSizeLimit: 100 * 1024 * 1024,
+      allowedMimeTypes: ['video/mp4', 'video/quicktime', 'video/webm', 'video/x-m4v', 'video/x-matroska', 'video/3gpp'],
+    },
+    resumes: {
+      fileSizeLimit: 10 * 1024 * 1024,
+      allowedMimeTypes: ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'image/jpeg', 'image/png'],
+    },
+  };
+  const cfg = BUCKET_CONFIGS[name] || BUCKET_CONFIGS.resumes;
   try {
     const db = getSupabaseAdmin();
     const { data: existing, error: getErr } = await db.storage.getBucket(name);
-    if (existing && !getErr) return res.status(200).json({ ok: true, created: false, name });
+    if (existing && !getErr) {
+      // Make sure existing bucket has the right caps (fixes old buckets that were created with too-small limits)
+      await db.storage.updateBucket(name, { public: true, fileSizeLimit: cfg.fileSizeLimit, allowedMimeTypes: cfg.allowedMimeTypes }).catch(() => {});
+      return res.status(200).json({ ok: true, created: false, name });
+    }
     const { error: createErr } = await db.storage.createBucket(name, {
       public: true,
-      fileSizeLimit: 10 * 1024 * 1024,
-      allowedMimeTypes: ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'image/jpeg', 'image/png'],
+      fileSizeLimit: cfg.fileSizeLimit,
+      allowedMimeTypes: cfg.allowedMimeTypes,
     });
     if (createErr) return res.status(500).json({ ok: false, error: createErr.message });
     return res.status(200).json({ ok: true, created: true, name });
