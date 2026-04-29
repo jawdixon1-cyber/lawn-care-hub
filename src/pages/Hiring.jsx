@@ -1677,6 +1677,7 @@ function ApplicationsTab() {
   const isImageUrl = (v) => typeof v === 'string' && /\.(png|jpe?g|gif|webp|svg)(\?|$)/i.test(v);
   const isPdfUrl = (v) => typeof v === 'string' && /\.pdf(\?|$)/i.test(v);
   const isHttpUrl = (v) => typeof v === 'string' && /^https?:\/\//.test(v);
+  const isVideoLink = (v) => typeof v === 'string' && /youtu\.?be|loom\.com|vimeo\.com|drive\.google|dropbox\.com|wistia/i.test(v);
 
   const parseEndDate = (raw) => {
     if (!raw) return null;
@@ -1957,7 +1958,11 @@ function ApplicationsTab() {
                             <span className="inline-block text-[11px] font-bold px-2 py-0.5 rounded-full bg-surface-alt text-muted italic">N/A</span>
                           ) : f?.type === 'signature' && typeof val === 'string' && val.startsWith('data:') ? (
                             <img src={val} alt="Signature" className="h-16 bg-surface-alt rounded-lg p-2" />
-                          ) : f?.type === 'file' || isImageUrl(val) || (isHttpUrl(val) && /resume|id|upload/i.test(k)) ? (
+                          ) : (k === 'intro_video_url' || isVideoLink(val)) && isHttpUrl(val) ? (
+                            <a href={val} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-brand/15 text-brand text-xs font-bold hover:bg-brand/25 transition-colors">
+                              <Video size={14} /> Watch video <ExternalLink size={11} />
+                            </a>
+                          ) : f?.type === 'file' || isImageUrl(val) || (isHttpUrl(val) && /^(resume|government_id|.*_upload|.*_file)/i.test(k)) ? (
                             <div className="space-y-2">
                               {isImageUrl(val) ? (
                                 <a href={val} target="_blank" rel="noopener noreferrer">
