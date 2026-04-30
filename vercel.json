@@ -31,6 +31,15 @@
     },
     "api/webhooks/request.js": {
       "maxDuration": 10
+    },
+    "api/webhooks/jobber.js": {
+      "maxDuration": 30
+    },
+    "api/cron/sync-jobber.js": {
+      "maxDuration": 60
     }
-  }
+  },
+  "crons": [
+    { "path": "/api/cron/sync-jobber", "schedule": "0 * * * *" }
+  ]
 }
