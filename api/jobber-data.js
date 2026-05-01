@@ -895,6 +895,28 @@ async function syncJobberVisits(supabase, sinceDays = 60, untilDays = 90) {
   return { visits: totalVisits, jobs: totalJobs, pages, range: { from: startISO, to: endISO } };
 }
 
+// Recurring client summary derived from hub_visits + hub_jobs canonical store.
+// Source-agnostic — works whether data came from Jobber webhooks or own software.
+async function handleRecurringSummary(req, res) {
+  try {
+    const supabase = getSupabaseAdmin();
+    const { data: jobs, error } = await supabase
+      .from('hub_jobs')
+      .select('id, contact_id, title')
+      .eq('type', 'recurring')
+      .eq('status', 'active');
+    if (error) throw new Error(error.message);
+    const uniqueClients = new Set((jobs || []).map((j) => j.contact_id).filter(Boolean));
+    return res.json({
+      activeRecurringCount: uniqueClients.size,
+      activeRecurringJobs: jobs?.length || 0,
+    });
+  } catch (err) {
+    console.error('[recurring-summary]', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+}
+
 async function handleHubSync(req, res) {
   const source = (req.query.source || 'jobber').toLowerCase();
   const entity = (req.query.entity || 'all').toLowerCase();
@@ -945,6 +967,7 @@ export default async function handler(req, res) {
     if (action === 'month-visits') return handleMonthVisits(req, res);
     if (action === 'hub-sync') return handleHubSync(req, res);
     if (action === 'ytd-revenue') return handleYTDRevenue(req, res);
+    if (action === 'recurring-summary') return handleRecurringSummary(req, res);
     return res.status(400).json({ error: 'action param required: status | crew-status | clients | labor | ytd-revenue' });
   } catch (err) {
     console.error('[Jobber Data] Error:', err.message);

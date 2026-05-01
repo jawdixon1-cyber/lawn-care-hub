@@ -760,18 +760,22 @@ function OwnerDashboard() {
     const today = getTodayInTimezone();
     const yearStart = today.slice(0, 4) + '-01-01';
 
-    // Single commander call (cached server-side for 5 min), then ytd revenue
+    // Single commander call (cached server-side for 5 min), then ytd revenue,
+    // plus a hub-sourced recurring summary as a Jobber-throttle-resilient fallback
     (async () => {
       const yearData = await fetch(`/api/commander/summary?start=${yearStart}&end=${today}`).then(r => r.ok ? r.json() : null).catch(() => null);
       const ytd = await fetch('/api/jobber-data?action=ytd-revenue').then(r => r.ok ? r.json() : null).catch(() => null);
-      return [yearData, ytd];
-    })().then(([yearData, ytd]) => {
+      const recurring = await fetch('/api/jobber-data?action=recurring-summary').then(r => r.ok ? r.json() : null).catch(() => null);
+      return [yearData, ytd, recurring];
+    })().then(([yearData, ytd, recurring]) => {
       // Only update if we got real data (don't overwrite cache with zeros)
-      if (!yearData && !ytd) return;
+      if (!yearData && !ytd && !recurring) return;
       const sent = yearData?.kpis?.quotesSent || 0;
       const approved = yearData?.kpis?.quotesApproved || 0;
+      // Prefer commander's count when available (it's date-filtered), otherwise use hub_jobs count
+      const recurringCount = yearData?.activeRecurringCount ?? recurring?.activeRecurringCount ?? 0;
       const newData = {
-        clients: yearData?.activeRecurringCount || 0,
+        clients: recurringCount,
         newLeads: yearData?.kpis?.newLeads || 0,
         quotesSent: sent,
         quotesApproved: approved,
