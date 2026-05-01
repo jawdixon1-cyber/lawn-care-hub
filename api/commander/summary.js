@@ -204,10 +204,42 @@ let inFlightPromise = null; // dedup concurrent requests
 const CACHE_TTL = 5 * 60 * 1000;
 const ERROR_COOLDOWN = 30 * 1000;
 
+// Try to hydrate the in-memory cache from Supabase on cold start.
+async function loadPersistedCache() {
+  try {
+    const { getSupabaseAdmin } = await import('../../lib/supabaseAdmin.js');
+    const db = getSupabaseAdmin();
+    const { data } = await db.from('app_state').select('value').eq('key', 'commander-summary-cache').maybeSingle();
+    if (data?.value?.cachedData && data.value.cacheTime) {
+      cachedData = data.value.cachedData;
+      cacheTime = data.value.cacheTime;
+      console.log(`[Commander] Hydrated cache from Supabase (age: ${Math.round((Date.now() - cacheTime) / 1000)}s)`);
+    }
+  } catch (err) {
+    console.warn('[Commander] Failed to load persisted cache:', err.message);
+  }
+}
+
+async function persistCache() {
+  try {
+    const { getSupabaseAdmin } = await import('../../lib/supabaseAdmin.js');
+    const db = getSupabaseAdmin();
+    await db.from('app_state').upsert({
+      key: 'commander-summary-cache',
+      value: { cachedData, cacheTime },
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'key' });
+  } catch (err) {
+    console.warn('[Commander] Failed to persist cache:', err.message);
+  }
+}
+
 async function getJobberData() {
   if (cachedData && Date.now() - cacheTime < CACHE_TTL) {
     return cachedData;
   }
+  // Cold start: try to hydrate from Supabase before fetching live
+  if (!cachedData) await loadPersistedCache();
   // If already fetching, wait for that instead of starting another
   if (inFlightPromise) {
     console.log('[Commander] Waiting for in-flight fetch...');
@@ -228,6 +260,8 @@ async function getJobberData() {
       cacheTime = Date.now();
       lastError = null;
       console.log(`[Commander] Got ${requests.length} requests, ${quotes.length} quotes, ${recurringJobs.length} recurring jobs`);
+      // Persist to Supabase so future cold starts can serve stale during throttle
+      persistCache().catch(() => {});
       return cachedData;
     } catch (err) {
     lastError = err;

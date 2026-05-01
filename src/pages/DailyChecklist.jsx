@@ -811,7 +811,8 @@ function OwnerDashboard() {
           >
             <p className="text-[10px] text-muted font-bold uppercase tracking-wider">Recurring Clients</p>
             <p className="text-3xl font-black text-brand-text mt-2">{data ? clients : '--'} <span className="text-lg text-muted font-bold">/ {CLIENT_GOAL}</span></p>
-            {data && <p className="text-xs text-brand-text/70 font-bold mt-1">{monthlyRev > 0 ? `${fmt$(monthlyRev)}/mo` : 'Loading...'}</p>}
+            {data && monthlyRev > 0 && <p className="text-xs text-brand-text/70 font-bold mt-1">{fmt$(monthlyRev)}/mo</p>}
+            {dashLoading && data && monthlyRev === 0 && <p className="text-xs text-brand-text/70 font-bold mt-1">Loading...</p>}
           </button>
         </div>
       </div>
