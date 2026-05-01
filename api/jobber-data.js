@@ -902,14 +902,43 @@ async function handleRecurringSummary(req, res) {
     const supabase = getSupabaseAdmin();
     const { data: jobs, error } = await supabase
       .from('hub_jobs')
-      .select('id, contact_id, title')
+      .select('id, contact_id, title, total_amount, contacts:contact_id ( id, name, phone, email, address_line1, address_city, address_state, address_zip )')
       .eq('type', 'recurring')
       .eq('status', 'active');
     if (error) throw new Error(error.message);
-    const uniqueClients = new Set((jobs || []).map((j) => j.contact_id).filter(Boolean));
+
+    // Group by contact, collecting all jobs and their titles
+    const byContact = new Map();
+    for (const j of jobs || []) {
+      if (!j.contact_id) continue;
+      const c = j.contacts;
+      if (!c) continue;
+      if (!byContact.has(j.contact_id)) {
+        byContact.set(j.contact_id, {
+          id: c.id,
+          name: c.name,
+          phone: c.phone,
+          email: c.email,
+          address: [c.address_line1, c.address_city, c.address_state].filter(Boolean).join(', '),
+          jobs: [],
+          monthly: 0,
+          perVisit: 0,
+        });
+      }
+      const entry = byContact.get(j.contact_id);
+      entry.jobs.push({
+        title: j.title || 'Recurring service',
+        frequency: 'Recurring',
+        price: j.total_amount || 0,
+        services: j.title ? [j.title] : [],
+      });
+    }
+    const list = Array.from(byContact.values()).sort((a, b) => a.name.localeCompare(b.name));
     return res.json({
-      activeRecurringCount: uniqueClients.size,
+      activeRecurringCount: list.length,
       activeRecurringJobs: jobs?.length || 0,
+      recurringClientList: list,
+      source: 'hub',
     });
   } catch (err) {
     console.error('[recurring-summary]', err.message);

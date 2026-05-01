@@ -82,8 +82,19 @@ export function RecurringClientsReport() {
     const url = `/api/commander/summary?start=${yearStart}&end=${today}${refresh ? '&refresh=1' : ''}`;
     fetch(url)
       .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
-      .then(d => setClients(d?.recurringClientList || []))
-      .catch(err => setError(err.message || 'Failed to load'))
+      .then(async d => {
+        const list = d?.recurringClientList || [];
+        if (list.length > 0) { setClients(list); return; }
+        // Commander returned nothing (likely throttled) — fall back to canonical hub store
+        const fb = await fetch('/api/jobber-data?action=recurring-summary').then(r => r.ok ? r.json() : null).catch(() => null);
+        setClients(fb?.recurringClientList || []);
+      })
+      .catch(async err => {
+        // Try the hub fallback before giving up
+        const fb = await fetch('/api/jobber-data?action=recurring-summary').then(r => r.ok ? r.json() : null).catch(() => null);
+        if (fb?.recurringClientList?.length) setClients(fb.recurringClientList);
+        else setError(err.message || 'Failed to load');
+      })
       .finally(() => setLoading(false));
   }, []);
 
