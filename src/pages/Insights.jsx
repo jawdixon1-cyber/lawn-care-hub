@@ -127,18 +127,22 @@ export function RecurringClientsReport() {
   const [colOrder, setColOrder] = useState(loadColOrder);
   const [showSettings, setShowSettings] = useState(false);
   const [dragIdx, setDragIdx] = useState(null);
-  const [overIdx, setOverIdx] = useState(null);
+  const [dropTarget, setDropTarget] = useState(null); // { idx, position: 'before' | 'after' }
 
   useEffect(() => {
     try { localStorage.setItem(COL_ORDER_KEY, JSON.stringify(colOrder)); } catch { /* ignore */ }
   }, [colOrder]);
 
-  const moveCol = (from, to) => {
-    if (from === to || from == null || to == null) return;
+  const dropAt = (from, overIdx, position) => {
+    if (from == null || overIdx == null) return;
     setColOrder(prev => {
-      const next = [...prev];
-      const [item] = next.splice(from, 1);
-      next.splice(to, 0, item);
+      const without = prev.filter((_, i) => i !== from);
+      let insertAt = overIdx;
+      if (from < overIdx) insertAt -= 1;
+      if (position === 'after') insertAt += 1;
+      insertAt = Math.max(0, Math.min(without.length, insertAt));
+      const next = [...without];
+      next.splice(insertAt, 0, prev[from]);
       return next;
     });
   };
@@ -355,36 +359,47 @@ export function RecurringClientsReport() {
               </button>
             </div>
             <p className="text-xs text-muted">Drag to reorder. Saved on this device.</p>
-            <div className="space-y-1">
+            <div className="relative">
               {colOrder.map((id, idx) => {
                 const isDragging = dragIdx === idx;
-                const isOver = overIdx === idx && dragIdx !== idx;
+                const showLineBefore = dropTarget?.idx === idx && dropTarget?.position === 'before' && dragIdx !== idx;
+                const showLineAfter = dropTarget?.idx === idx && dropTarget?.position === 'after' && dragIdx !== idx;
                 return (
-                  <div
-                    key={id}
-                    draggable
-                    onDragStart={(e) => {
-                      setDragIdx(idx);
-                      e.dataTransfer.effectAllowed = 'move';
-                    }}
-                    onDragOver={(e) => {
-                      e.preventDefault();
-                      e.dataTransfer.dropEffect = 'move';
-                      if (overIdx !== idx) setOverIdx(idx);
-                    }}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      moveCol(dragIdx, idx);
-                      setDragIdx(null);
-                      setOverIdx(null);
-                    }}
-                    onDragEnd={() => { setDragIdx(null); setOverIdx(null); }}
-                    className={`flex items-center gap-2 bg-surface-alt rounded-lg px-3 py-2 cursor-grab active:cursor-grabbing select-none transition-all
-                      ${isDragging ? 'opacity-40' : ''}
-                      ${isOver ? 'ring-2 ring-brand-text' : ''}`}
-                  >
-                    <GripVertical size={14} className="text-muted shrink-0" />
-                    <span className="text-sm text-primary">{COL_DEFS[id].label}</span>
+                  <div key={id} className="relative">
+                    {showLineBefore && (
+                      <div className="absolute -top-0.5 left-0 right-0 h-1 bg-brand-text rounded-full pointer-events-none z-10" />
+                    )}
+                    <div
+                      draggable
+                      onDragStart={(e) => {
+                        setDragIdx(idx);
+                        e.dataTransfer.effectAllowed = 'move';
+                      }}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        e.dataTransfer.dropEffect = 'move';
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        const position = e.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
+                        if (dropTarget?.idx !== idx || dropTarget?.position !== position) {
+                          setDropTarget({ idx, position });
+                        }
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        if (dropTarget) dropAt(dragIdx, dropTarget.idx, dropTarget.position);
+                        setDragIdx(null);
+                        setDropTarget(null);
+                      }}
+                      onDragEnd={() => { setDragIdx(null); setDropTarget(null); }}
+                      className={`flex items-center gap-2 bg-surface-alt rounded-lg px-3 py-2 my-1 cursor-grab active:cursor-grabbing select-none transition-opacity
+                        ${isDragging ? 'opacity-40' : ''}`}
+                    >
+                      <GripVertical size={14} className="text-muted shrink-0" />
+                      <span className="text-sm text-primary">{COL_DEFS[id].label}</span>
+                    </div>
+                    {showLineAfter && (
+                      <div className="absolute -bottom-0.5 left-0 right-0 h-1 bg-brand-text rounded-full pointer-events-none z-10" />
+                    )}
                   </div>
                 );
               })}
