@@ -14,6 +14,13 @@ const fmtDate = (iso) => {
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 };
 
+const pct = (v) => v == null || isNaN(v) ? '—' : `${Math.round(v)}%`;
+const marginTone = (m) => m == null ? 'text-muted'
+  : m >= 50 ? 'text-emerald-500'
+  : m >= 30 ? 'text-amber-400'
+  : m >= 0 ? 'text-orange-500'
+  : 'text-red-500';
+
 // Column registry for the recurring-clients tables. Keep '#' implicit/first.
 const COL_DEFS = {
   name: {
@@ -55,8 +62,16 @@ const COL_DEFS = {
     label: 'Monthly', sortField: 'monthly', align: 'right',
     cell: (j, dim) => <span className={`font-semibold ${dim ? '' : 'text-brand-text'}`}>{money(j.monthly)}</span>,
   },
+  profitPct: {
+    label: 'Profit %', sortField: 'profitPct', align: 'right',
+    cell: (j) => {
+      if (j.profitLoading) return <span className="text-muted text-xs">…</span>;
+      if (j.profitPct == null) return <span className="text-muted">—</span>;
+      return <span className={`font-semibold ${marginTone(j.profitPct)}`}>{pct(j.profitPct)}</span>;
+    },
+  },
 };
-const DEFAULT_COL_ORDER = ['name', 'title', 'frequency', 'start', 'end', 'perVisit', 'monthly'];
+const DEFAULT_COL_ORDER = ['name', 'title', 'frequency', 'start', 'end', 'perVisit', 'monthly', 'profitPct'];
 const COL_ORDER_KEY = 'recurring-clients-col-order';
 
 function loadColOrder() {
@@ -69,6 +84,25 @@ function loadColOrder() {
     }
   } catch { /* ignore */ }
   return DEFAULT_COL_ORDER;
+}
+
+// Aggregate labor visits by Jobber jobId → { rev, labor, expenses, margin }
+function buildLaborByJob(daysObj) {
+  const map = {};
+  for (const day of Object.values(daysObj || {})) {
+    for (const v of (day.visits || [])) {
+      if (!v.jobId) continue;
+      if (!map[v.jobId]) map[v.jobId] = { rev: 0, labor: 0, expenses: 0 };
+      map[v.jobId].rev += (v.rawJobTotal ?? v.jobTotal) || 0;
+      map[v.jobId].labor += v.labor?.totalCost || 0;
+      map[v.jobId].expenses += v.jobExpenses || 0;
+    }
+  }
+  for (const id in map) {
+    const m = map[id];
+    m.margin = m.rev > 0 ? ((m.rev - m.labor - m.expenses) / m.rev) * 100 : null;
+  }
+  return map;
 }
 const REPORTS = [
   { id: 'clients', path: '/insights/clients', label: 'Recurring Clients', description: 'Full roster with frequency, service, dates, and revenue', icon: Users },
@@ -128,6 +162,7 @@ export function RecurringClientsReport() {
   const [showSettings, setShowSettings] = useState(false);
   const [dragIdx, setDragIdx] = useState(null);
   const [dropTarget, setDropTarget] = useState(null); // { idx, position: 'before' | 'after' }
+  const [laborByJob, setLaborByJob] = useState(null); // null=loading, {}=loaded
 
   useEffect(() => {
     try { localStorage.setItem(COL_ORDER_KEY, JSON.stringify(colOrder)); } catch { /* ignore */ }
@@ -164,6 +199,28 @@ export function RecurringClientsReport() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // Profitability per job: parallel-fetch labor data for last 90 days, aggregate by Jobber jobId.
+  useEffect(() => {
+    const today = getTodayInTimezone();
+    const start = new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10);
+    setLaborByJob(null);
+    fetch(`/api/jobber-data?action=labor&start=${start}&end=${today}&skipLineItems=1&skipJobExpenses=1`)
+      .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
+      .then(d => setLaborByJob(buildLaborByJob(d)))
+      .catch(() => setLaborByJob({})); // failed → mark loaded with empty so column shows "—"
+  }, []);
+
+  // Enrich job rows with profitPct from the labor lookup.
+  const enrich = useCallback((rows) => {
+    if (laborByJob === null) {
+      return rows.map(r => ({ ...r, profitLoading: true, profitPct: null }));
+    }
+    return rows.map(r => {
+      const m = laborByJob[r.sourceId];
+      return { ...r, profitLoading: false, profitPct: m?.margin ?? null };
+    });
+  }, [laborByJob]);
 
   // Pull geocoded client coords from the dominate endpoint (same Jobber data, already geocoded server-side)
   useEffect(() => {
@@ -217,6 +274,7 @@ export function RecurringClientsReport() {
         case 'frequency': return (freqSortVal(a) - freqSortVal(b)) * dir;
         case 'perVisit': return ((a.perVisit ?? -Infinity) - (b.perVisit ?? -Infinity)) * dir;
         case 'monthly': return ((a.monthly ?? -Infinity) - (b.monthly ?? -Infinity)) * dir;
+        case 'profitPct': return ((a.profitPct ?? -Infinity) - (b.profitPct ?? -Infinity)) * dir;
         case 'start': return (startMs(a) - startMs(b)) * dir;
         case 'title': return (a.title || '').localeCompare(b.title || '') * dir;
         default: return a.name.localeCompare(b.name) * dir;
@@ -225,13 +283,17 @@ export function RecurringClientsReport() {
     return out;
   }, [sortKey, sortDir]);
 
-  const sortedLawn = useMemo(() => sortFn(filterFn(lawnJobs)), [lawnJobs, filterFn, sortFn]);
-  const sortedOther = useMemo(() => sortFn(filterFn(otherJobs)), [otherJobs, filterFn, sortFn]);
-  const sortedEnded = useMemo(() => sortFn(filterFn(endedJobs)), [endedJobs, filterFn, sortFn]);
+  const sortedLawn = useMemo(() => sortFn(filterFn(enrich(lawnJobs))), [lawnJobs, enrich, filterFn, sortFn]);
+  const sortedOther = useMemo(() => sortFn(filterFn(enrich(otherJobs))), [otherJobs, enrich, filterFn, sortFn]);
+  const sortedEnded = useMemo(() => sortFn(filterFn(enrich(endedJobs))), [endedJobs, enrich, filterFn, sortFn]);
 
   const toggleSort = (key) => {
     if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
-    else { setSortKey(key); setSortDir(key === 'name' || key === 'frequency' || key === 'title' ? 'asc' : 'desc'); }
+    else {
+      setSortKey(key);
+      const ascByDefault = key === 'name' || key === 'frequency' || key === 'title';
+      setSortDir(ascByDefault ? 'asc' : 'desc');
+    }
   };
 
   const sumMonthly = (list) => list.reduce((s, j) => s + (j.monthly || 0), 0);

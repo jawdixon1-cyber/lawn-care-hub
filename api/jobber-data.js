@@ -944,7 +944,7 @@ async function handleRecurringSummary(req, res) {
     const { data: jobs, error } = await supabase
       .from('hub_jobs')
       .select(`
-        id, contact_id, title, status,
+        id, contact_id, title, status, source_id,
         total_amount, frequency_label, visits_per_month,
         start_date, end_date,
         contacts:contact_id ( id, name, phone, email, address_line1, address_city, address_state, address_zip )
@@ -980,6 +980,7 @@ async function handleRecurringSummary(req, res) {
 
       const row = {
         contactId: c.id,
+        sourceId: j.source_id,
         name: c.name,
         phone: c.phone,
         email: c.email,
