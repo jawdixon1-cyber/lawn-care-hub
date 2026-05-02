@@ -162,7 +162,9 @@ export function RecurringClientsReport() {
   const [showSettings, setShowSettings] = useState(false);
   const [dragIdx, setDragIdx] = useState(null);
   const [dropTarget, setDropTarget] = useState(null); // { idx, position: 'before' | 'after' }
-  const [laborByJob, setLaborByJob] = useState(null); // null=loading, {}=loaded
+  const [laborByJob, setLaborByJob] = useState({});
+  const [laborStatus, setLaborStatus] = useState('loading'); // loading | loaded | throttled | failed
+  const [laborRetryAt, setLaborRetryAt] = useState(null);
 
   useEffect(() => {
     try { localStorage.setItem(COL_ORDER_KEY, JSON.stringify(colOrder)); } catch { /* ignore */ }
@@ -201,26 +203,52 @@ export function RecurringClientsReport() {
   useEffect(() => { load(); }, [load]);
 
   // Profitability per job: parallel-fetch labor data for last 90 days, aggregate by Jobber jobId.
-  useEffect(() => {
+  // Auto-retries once after Jobber throttle clears (~65s).
+  const fetchLabor = useCallback(async () => {
     const today = getTodayInTimezone();
     const start = new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10);
-    setLaborByJob(null);
-    fetch(`/api/jobber-data?action=labor&start=${start}&end=${today}&skipLineItems=1&skipJobExpenses=1`)
-      .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
-      .then(d => setLaborByJob(buildLaborByJob(d)))
-      .catch(() => setLaborByJob({})); // failed → mark loaded with empty so column shows "—"
+    setLaborStatus('loading');
+    setLaborRetryAt(null);
+    try {
+      const r = await fetch(`/api/jobber-data?action=labor&start=${start}&end=${today}&skipLineItems=1&skipJobExpenses=1`);
+      const body = await r.json();
+      if (!r.ok || body?.error) {
+        if (r.status === 429 || body?.code === 'THROTTLED') {
+          setLaborStatus('throttled');
+          setLaborRetryAt(Date.now() + 65000);
+          return;
+        }
+        throw new Error(body?.error || `HTTP ${r.status}`);
+      }
+      setLaborByJob(buildLaborByJob(body));
+      setLaborStatus('loaded');
+    } catch {
+      setLaborStatus('failed');
+    }
   }, []);
+
+  useEffect(() => { fetchLabor(); }, [fetchLabor]);
+
+  // Auto-retry after throttle clears
+  useEffect(() => {
+    if (laborStatus !== 'throttled' || !laborRetryAt) return;
+    const ms = Math.max(0, laborRetryAt - Date.now());
+    const t = setTimeout(() => fetchLabor(), ms);
+    return () => clearTimeout(t);
+  }, [laborStatus, laborRetryAt, fetchLabor]);
 
   // Enrich job rows with profitPct from the labor lookup.
   const enrich = useCallback((rows) => {
-    if (laborByJob === null) {
-      return rows.map(r => ({ ...r, profitLoading: true, profitPct: null }));
-    }
+    const isPending = laborStatus === 'loading' || laborStatus === 'throttled';
     return rows.map(r => {
       const m = laborByJob[r.sourceId];
-      return { ...r, profitLoading: false, profitPct: m?.margin ?? null };
+      return {
+        ...r,
+        profitLoading: isPending && !m,
+        profitPct: m?.margin ?? null,
+      };
     });
-  }, [laborByJob]);
+  }, [laborByJob, laborStatus]);
 
   // Pull geocoded client coords from the dominate endpoint (same Jobber data, already geocoded server-side)
   useEffect(() => {
@@ -384,6 +412,18 @@ export function RecurringClientsReport() {
           <p className="text-3xl font-black text-primary mt-2">{avgMonthly > 0 ? money(avgMonthly) : '--'}</p>
         </div>
       </div>
+
+      {laborStatus === 'throttled' && (
+        <div className="bg-amber-500/10 border border-amber-500/40 rounded-xl px-4 py-2 text-xs text-amber-300">
+          Profit data: Jobber is rate-limiting us. Auto-retrying in ~1 minute…
+        </div>
+      )}
+      {laborStatus === 'failed' && (
+        <div className="bg-red-500/10 border border-red-500/40 rounded-xl px-4 py-2 text-xs text-red-300 flex items-center justify-between gap-3">
+          <span>Profit data failed to load.</span>
+          <button onClick={() => fetchLabor()} className="font-semibold underline cursor-pointer">Retry</button>
+        </div>
+      )}
 
       <div className="flex items-center gap-3">
         <input
