@@ -175,9 +175,39 @@ async function fetchVisitsForJob(jobId) {
   return allVisits.filter(v => v.completedAt);
 }
 
-// Labor data cache
+// Labor data cache — in-memory + persisted to Supabase so cold starts
+// don't always hammer Jobber (which rate-limits the 90-day scan).
 const laborCache = {};
-const LABOR_CACHE_TTL = 5 * 60 * 1000;
+const LABOR_CACHE_TTL = 30 * 60 * 1000;          // serve fresh up to 30 min
+const LABOR_STALE_OK_TTL = 24 * 60 * 60 * 1000;  // willing to serve stale up to 24h on throttle
+
+async function loadPersistedLabor(cacheKey) {
+  try {
+    const supabase = getSupabaseAdmin();
+    const { data } = await supabase.from('app_state').select('value')
+      .eq('key', `labor-cache:${cacheKey}`).maybeSingle();
+    if (data?.value?.data && data.value.time) {
+      laborCache[cacheKey] = { data: data.value.data, time: data.value.time };
+      return laborCache[cacheKey];
+    }
+  } catch (err) {
+    console.warn('[Labor] Persist load failed:', err.message);
+  }
+  return null;
+}
+
+async function persistLabor(cacheKey, entry) {
+  try {
+    const supabase = getSupabaseAdmin();
+    await supabase.from('app_state').upsert({
+      key: `labor-cache:${cacheKey}`,
+      value: { data: entry.data, time: entry.time },
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'key' });
+  } catch (err) {
+    console.warn('[Labor] Persist save failed:', err.message);
+  }
+}
 
 // Per-VISIT line items cache — the actual price for that specific visit,
 // including any per-visit overrides/discounts. Cached briefly so the
@@ -228,7 +258,8 @@ async function handleLaborData(req, res) {
   const skipJobExpenses = req.query.skipJobExpenses === '1';
 
   const cacheKey = `${start}|${end}|${skipLineItems ? 'nopv' : 'full'}|${skipJobExpenses ? 'noje' : 'je'}`;
-  const cached = laborCache[cacheKey];
+  let cached = laborCache[cacheKey];
+  if (!cached) cached = await loadPersistedLabor(cacheKey); // hydrate from Supabase on cold start
   if (cached && Date.now() - cached.time < LABOR_CACHE_TTL) {
     return res.json(cached.data);
   }
@@ -242,8 +273,9 @@ async function handleLaborData(req, res) {
     expenses = await fetchExpenses(start, end);
   } catch (err) {
     console.error('[Labor] Fetch error:', err.message);
-    if (cached) {
-      console.log('[Labor] Serving stale cache due to error');
+    // Serve stale (up to 24h) if we have it — beats showing "rate limited" forever.
+    if (cached && Date.now() - cached.time < LABOR_STALE_OK_TTL) {
+      console.log(`[Labor] Serving stale cache (age ${Math.round((Date.now() - cached.time) / 60000)}m)`);
       return res.json(cached.data);
     }
     if (err.message?.includes('Throttled')) {
@@ -563,6 +595,7 @@ async function handleLaborData(req, res) {
     }
   }
   laborCache[cacheKey] = { data: grouped, time: Date.now() };
+  persistLabor(cacheKey, laborCache[cacheKey]).catch(() => {}); // fire-and-forget
   return res.json(grouped);
 }
 
