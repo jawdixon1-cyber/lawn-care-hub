@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, lazy, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowUpDown, RefreshCw, Users, TrendingUp, MapPinned, ChevronLeft, ChevronRight, Settings, ChevronUp, ChevronDown, X } from 'lucide-react';
+import { ArrowUpDown, RefreshCw, Users, TrendingUp, MapPinned, ChevronLeft, ChevronRight, Settings, X, GripVertical } from 'lucide-react';
 import { getTodayInTimezone } from '../utils/timezone';
 
 const ClientMapInner = lazy(() => import('../components/ClientMapInner'));
@@ -126,17 +126,19 @@ export function RecurringClientsReport() {
   const [showEnded, setShowEnded] = useState(true);
   const [colOrder, setColOrder] = useState(loadColOrder);
   const [showSettings, setShowSettings] = useState(false);
+  const [dragIdx, setDragIdx] = useState(null);
+  const [overIdx, setOverIdx] = useState(null);
 
   useEffect(() => {
     try { localStorage.setItem(COL_ORDER_KEY, JSON.stringify(colOrder)); } catch { /* ignore */ }
   }, [colOrder]);
 
-  const moveCol = (idx, dir) => {
+  const moveCol = (from, to) => {
+    if (from === to || from == null || to == null) return;
     setColOrder(prev => {
       const next = [...prev];
-      const j = idx + dir;
-      if (j < 0 || j >= next.length) return prev;
-      [next[idx], next[j]] = [next[j], next[idx]];
+      const [item] = next.splice(from, 1);
+      next.splice(to, 0, item);
       return next;
     });
   };
@@ -352,29 +354,40 @@ export function RecurringClientsReport() {
                 <X size={16} className="text-muted" />
               </button>
             </div>
-            <p className="text-xs text-muted">Move columns up or down. Saved on this device.</p>
+            <p className="text-xs text-muted">Drag to reorder. Saved on this device.</p>
             <div className="space-y-1">
-              {colOrder.map((id, idx) => (
-                <div key={id} className="flex items-center justify-between bg-surface-alt rounded-lg px-3 py-2">
-                  <span className="text-sm text-primary">{COL_DEFS[id].label}</span>
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => moveCol(idx, -1)}
-                      disabled={idx === 0}
-                      className="p-1 rounded hover:bg-surface disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
-                    >
-                      <ChevronUp size={14} className="text-secondary" />
-                    </button>
-                    <button
-                      onClick={() => moveCol(idx, 1)}
-                      disabled={idx === colOrder.length - 1}
-                      className="p-1 rounded hover:bg-surface disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
-                    >
-                      <ChevronDown size={14} className="text-secondary" />
-                    </button>
+              {colOrder.map((id, idx) => {
+                const isDragging = dragIdx === idx;
+                const isOver = overIdx === idx && dragIdx !== idx;
+                return (
+                  <div
+                    key={id}
+                    draggable
+                    onDragStart={(e) => {
+                      setDragIdx(idx);
+                      e.dataTransfer.effectAllowed = 'move';
+                    }}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = 'move';
+                      if (overIdx !== idx) setOverIdx(idx);
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      moveCol(dragIdx, idx);
+                      setDragIdx(null);
+                      setOverIdx(null);
+                    }}
+                    onDragEnd={() => { setDragIdx(null); setOverIdx(null); }}
+                    className={`flex items-center gap-2 bg-surface-alt rounded-lg px-3 py-2 cursor-grab active:cursor-grabbing select-none transition-all
+                      ${isDragging ? 'opacity-40' : ''}
+                      ${isOver ? 'ring-2 ring-brand-text' : ''}`}
+                  >
+                    <GripVertical size={14} className="text-muted shrink-0" />
+                    <span className="text-sm text-primary">{COL_DEFS[id].label}</span>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
             <div className="flex items-center justify-between pt-2">
               <button
