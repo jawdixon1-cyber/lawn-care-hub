@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, lazy, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowUpDown, RefreshCw, Users, TrendingUp, MapPinned, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ArrowUpDown, RefreshCw, Users, TrendingUp, MapPinned, ChevronLeft, ChevronRight, Settings, ChevronUp, ChevronDown, X } from 'lucide-react';
 import { getTodayInTimezone } from '../utils/timezone';
 
 const ClientMapInner = lazy(() => import('../components/ClientMapInner'));
@@ -13,6 +13,63 @@ const fmtDate = (iso) => {
   if (isNaN(d.getTime())) return null;
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 };
+
+// Column registry for the recurring-clients tables. Keep '#' implicit/first.
+const COL_DEFS = {
+  name: {
+    label: 'Client', sortField: 'name', align: 'left',
+    cell: (j, dim) => <span className={`font-medium ${dim ? '' : 'text-primary'}`}>{j.name}</span>,
+  },
+  title: {
+    label: 'Service', sortField: 'title', align: 'left',
+    cell: (j, dim) => (
+      <span
+        className={`block max-w-[220px] truncate text-xs ${dim ? '' : 'text-secondary'}`}
+        title={j.title || ''}
+      >
+        {j.title || '—'}
+      </span>
+    ),
+  },
+  frequency: {
+    label: 'Frequency', sortField: 'frequency', align: 'left',
+    cell: (j, dim) => <span className={`text-xs ${dim ? '' : 'text-secondary'}`}>{j.frequency}</span>,
+  },
+  start: {
+    label: 'Start', sortField: 'start', align: 'left',
+    cell: (j, dim) => <span className={`text-xs whitespace-nowrap ${dim ? '' : 'text-secondary'}`}>{fmtDate(j.startDate) || '—'}</span>,
+  },
+  end: {
+    label: 'End', align: 'left',
+    cell: (j, dim) => {
+      const end = fmtDate(j.endDate);
+      if (end) return <span className={`text-xs whitespace-nowrap ${dim ? '' : 'text-secondary'}`}>{end}</span>;
+      return dim ? <span className="text-xs whitespace-nowrap">—</span> : <span className="text-xs whitespace-nowrap text-brand-text font-semibold">Ongoing</span>;
+    },
+  },
+  perVisit: {
+    label: 'Per Visit', sortField: 'perVisit', align: 'right',
+    cell: (j, dim) => <span className={dim ? '' : 'text-secondary'}>{money(j.perVisit)}</span>,
+  },
+  monthly: {
+    label: 'Monthly', sortField: 'monthly', align: 'right',
+    cell: (j, dim) => <span className={`font-semibold ${dim ? '' : 'text-brand-text'}`}>{money(j.monthly)}</span>,
+  },
+};
+const DEFAULT_COL_ORDER = ['name', 'title', 'frequency', 'start', 'end', 'perVisit', 'monthly'];
+const COL_ORDER_KEY = 'recurring-clients-col-order';
+
+function loadColOrder() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(COL_ORDER_KEY) || 'null');
+    if (Array.isArray(stored) && stored.length === DEFAULT_COL_ORDER.length
+        && stored.every(id => DEFAULT_COL_ORDER.includes(id))
+        && new Set(stored).size === stored.length) {
+      return stored;
+    }
+  } catch { /* ignore */ }
+  return DEFAULT_COL_ORDER;
+}
 const REPORTS = [
   { id: 'clients', path: '/insights/clients', label: 'Recurring Clients', description: 'Full roster with frequency, service, dates, and revenue', icon: Users },
   { id: 'leads', path: '/insights/leads', label: 'Leads', description: 'Where your requests come from and how sources perform', icon: MapPinned },
@@ -67,6 +124,23 @@ export function RecurringClientsReport() {
   const [search, setSearch] = useState('');
   const [geocoded, setGeocoded] = useState([]);
   const [showEnded, setShowEnded] = useState(true);
+  const [colOrder, setColOrder] = useState(loadColOrder);
+  const [showSettings, setShowSettings] = useState(false);
+
+  useEffect(() => {
+    try { localStorage.setItem(COL_ORDER_KEY, JSON.stringify(colOrder)); } catch { /* ignore */ }
+  }, [colOrder]);
+
+  const moveCol = (idx, dir) => {
+    setColOrder(prev => {
+      const next = [...prev];
+      const j = idx + dir;
+      if (j < 0 || j >= next.length) return prev;
+      [next[idx], next[j]] = [next[j], next[idx]];
+      return next;
+    });
+  };
+  const resetCols = () => setColOrder(DEFAULT_COL_ORDER);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -178,34 +252,28 @@ export function RecurringClientsReport() {
         <thead>
           <tr className="text-[11px] text-muted uppercase tracking-wide">
             <th className="pb-2 pr-3 text-left">#</th>
-            <SortHeader field="name">Client</SortHeader>
-            <SortHeader field="title">Service</SortHeader>
-            <SortHeader field="frequency">Frequency</SortHeader>
-            <SortHeader field="start">Start</SortHeader>
-            <th className="pb-2 pr-3 text-left">End</th>
-            <SortHeader field="perVisit" align="right">Per Visit</SortHeader>
-            <SortHeader field="monthly" align="right">Monthly</SortHeader>
+            {colOrder.map(id => {
+              const def = COL_DEFS[id];
+              return def.sortField
+                ? <SortHeader key={id} field={def.sortField} align={def.align}>{def.label}</SortHeader>
+                : <th key={id} className={`pb-2 pr-3 ${def.align === 'right' ? 'text-right' : 'text-left'}`}>{def.label}</th>;
+            })}
           </tr>
         </thead>
         <tbody>
-          {rows.map((j, i) => {
-            const startStr = fmtDate(j.startDate);
-            const endStr = fmtDate(j.endDate);
-            return (
-              <tr key={`${j.contactId}-${j.title}-${i}`} className={`border-t border-border-subtle/50 align-top ${dim ? 'text-muted' : ''}`}>
-                <td className="py-3 pr-3 text-muted text-xs">{i + 1}</td>
-                <td className={`py-3 pr-3 font-medium ${dim ? '' : 'text-primary'}`}>{j.name}</td>
-                <td className={`py-3 pr-3 text-xs ${dim ? '' : 'text-secondary'}`}>{j.title || '—'}</td>
-                <td className={`py-3 pr-3 text-xs ${dim ? '' : 'text-secondary'}`}>{j.frequency}</td>
-                <td className={`py-3 pr-3 text-xs whitespace-nowrap ${dim ? '' : 'text-secondary'}`}>{startStr || '—'}</td>
-                <td className={`py-3 pr-3 text-xs whitespace-nowrap ${dim ? '' : 'text-secondary'}`}>
-                  {endStr || (dim ? '—' : <span className="text-brand-text font-semibold">Ongoing</span>)}
-                </td>
-                <td className={`py-3 pr-3 text-right ${dim ? '' : 'text-secondary'}`}>{money(j.perVisit)}</td>
-                <td className={`py-3 text-right font-semibold ${dim ? '' : 'text-brand-text'}`}>{money(j.monthly)}</td>
-              </tr>
-            );
-          })}
+          {rows.map((j, i) => (
+            <tr key={`${j.contactId}-${j.title}-${i}`} className={`border-t border-border-subtle/50 align-top ${dim ? 'text-muted' : ''}`}>
+              <td className="py-3 pr-3 text-muted text-xs">{i + 1}</td>
+              {colOrder.map(id => {
+                const def = COL_DEFS[id];
+                return (
+                  <td key={id} className={`py-3 pr-3 ${def.align === 'right' ? 'text-right' : ''}`}>
+                    {def.cell(j, dim)}
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
         </tbody>
       </table>
     </div>
@@ -274,7 +342,74 @@ export function RecurringClientsReport() {
           placeholder="Search name, service, frequency..."
           className="flex-1 max-w-md bg-surface-alt rounded-lg px-3 py-2 text-sm text-primary placeholder:text-placeholder-muted focus:outline-none focus:ring-1 focus:ring-border-default"
         />
+        <button
+          onClick={() => setShowSettings(true)}
+          className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-border-default bg-card text-secondary text-sm font-semibold hover:bg-surface cursor-pointer"
+        >
+          <Settings size={14} />
+          Columns
+        </button>
       </div>
+
+      {showSettings && (
+        <div
+          className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4"
+          onClick={() => setShowSettings(false)}
+        >
+          <div
+            className="bg-card rounded-2xl border border-border-subtle p-5 w-full max-w-sm space-y-3"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-primary">Reorder Columns</h3>
+              <button
+                onClick={() => setShowSettings(false)}
+                className="p-1 rounded hover:bg-surface-alt cursor-pointer"
+              >
+                <X size={16} className="text-muted" />
+              </button>
+            </div>
+            <p className="text-xs text-muted">Move columns up or down. Saved on this device.</p>
+            <div className="space-y-1">
+              {colOrder.map((id, idx) => (
+                <div key={id} className="flex items-center justify-between bg-surface-alt rounded-lg px-3 py-2">
+                  <span className="text-sm text-primary">{COL_DEFS[id].label}</span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => moveCol(idx, -1)}
+                      disabled={idx === 0}
+                      className="p-1 rounded hover:bg-surface disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                    >
+                      <ChevronUp size={14} className="text-secondary" />
+                    </button>
+                    <button
+                      onClick={() => moveCol(idx, 1)}
+                      disabled={idx === colOrder.length - 1}
+                      className="p-1 rounded hover:bg-surface disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                    >
+                      <ChevronDown size={14} className="text-secondary" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="flex items-center justify-between pt-2">
+              <button
+                onClick={resetCols}
+                className="text-xs text-muted hover:text-primary cursor-pointer"
+              >
+                Reset to default
+              </button>
+              <button
+                onClick={() => setShowSettings(false)}
+                className="px-4 py-1.5 rounded-lg bg-brand text-brand-text-on text-sm font-semibold cursor-pointer"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {error && lawnJobs.length === 0 && otherJobs.length === 0 && (
         <p className="text-sm text-red-500 py-8 text-center">{error}</p>
