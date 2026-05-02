@@ -66,6 +66,7 @@ export default function Insights() {
 export function RecurringClientsReport() {
   const navigate = useNavigate();
   const [clients, setClients] = useState([]);
+  const [endedClients, setEndedClients] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [sortKey, setSortKey] = useState('name');
@@ -73,13 +74,17 @@ export function RecurringClientsReport() {
   const [search, setSearch] = useState('');
   const [geocoded, setGeocoded] = useState([]);
   const [expanded, setExpanded] = useState(null);
+  const [showEnded, setShowEnded] = useState(true);
 
   const load = useCallback(() => {
     setLoading(true);
     setError(null);
     fetch('/api/jobber-data?action=recurring-summary')
       .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
-      .then(d => setClients(d?.recurringClientList || []))
+      .then(d => {
+        setClients(d?.recurringClientList || []);
+        setEndedClients(d?.endedClientList || []);
+      })
       .catch(err => setError(err.message || 'Failed to load'))
       .finally(() => setLoading(false));
   }, []);
@@ -122,23 +127,23 @@ export function RecurringClientsReport() {
     return Math.min(...c.jobs.map(j => FREQ_ORDER[j.frequency] ?? 10));
   };
 
-  const filtered = useMemo(() => {
+  const filterFn = useCallback((list) => {
     const q = search.trim().toLowerCase();
-    if (!q) return clients;
-    return clients.filter(c =>
+    if (!q) return list;
+    return list.filter(c =>
       c.name.toLowerCase().includes(q) ||
       c.jobs.some(j => (j.services || []).some(s => s.toLowerCase().includes(q)) || j.frequency.toLowerCase().includes(q))
     );
-  }, [clients, search]);
+  }, [search]);
 
-  const sorted = useMemo(() => {
-    const list = [...filtered];
+  const sortFn = useCallback((list) => {
+    const out = [...list];
     const dir = sortDir === 'asc' ? 1 : -1;
     const startMs = (c) => {
       const d = earliest(c.jobs.map(j => j.startDate));
       return d ? new Date(d).getTime() : Infinity;
     };
-    list.sort((a, b) => {
+    out.sort((a, b) => {
       switch (sortKey) {
         case 'frequency': return (freqSortVal(a) - freqSortVal(b)) * dir;
         case 'perVisit': return (a.perVisit - b.perVisit) * dir;
@@ -147,8 +152,11 @@ export function RecurringClientsReport() {
         default: return a.name.localeCompare(b.name) * dir;
       }
     });
-    return list;
-  }, [filtered, sortKey, sortDir]);
+    return out;
+  }, [sortKey, sortDir]);
+
+  const sorted = useMemo(() => sortFn(filterFn(clients)), [clients, filterFn, sortFn]);
+  const sortedEnded = useMemo(() => sortFn(filterFn(endedClients)), [endedClients, filterFn, sortFn]);
 
   const toggleSort = (key) => {
     if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -361,6 +369,62 @@ export function RecurringClientsReport() {
           </div>
         )}
       </div>
+
+      {endedClients.length > 0 && (
+        <div className="bg-card rounded-2xl border border-border-subtle p-5">
+          <button
+            onClick={() => setShowEnded(!showEnded)}
+            className="flex items-center justify-between w-full mb-4 cursor-pointer"
+          >
+            <div className="flex items-center gap-2">
+              <Users size={16} className="text-muted" />
+              <h2 className="text-sm font-bold text-secondary">Ended Recurring Clients</h2>
+              <span className="text-xs text-muted">({sortedEnded.length})</span>
+            </div>
+            <ChevronRight size={16} className={`text-muted transition-transform ${showEnded ? 'rotate-90' : ''}`} />
+          </button>
+          {showEnded && (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-[11px] text-muted uppercase tracking-wide">
+                    <th className="pb-2 pr-3 text-left">#</th>
+                    <th className="pb-2 pr-3 text-left">Client</th>
+                    <th className="pb-2 pr-3 text-left">Frequency</th>
+                    <th className="pb-2 pr-3 text-left">Service</th>
+                    <th className="pb-2 pr-3 text-left">Started</th>
+                    <th className="pb-2 pr-3 text-left">Ended</th>
+                    <th className="pb-2 pr-3 text-right">Per Visit</th>
+                    <th className="pb-2 text-right">Was Monthly</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedEnded.map((c, i) => {
+                    const startIso = earliest(c.jobs.map(j => j.startDate));
+                    const endIso = latest(c.jobs.map(j => j.endDate));
+                    return (
+                      <tr key={c.name + i} className="border-t border-border-subtle/50 align-top text-muted">
+                        <td className="py-3 pr-3 text-xs">{i + 1}</td>
+                        <td className="py-3 pr-3 font-medium">{c.name}</td>
+                        <td className="py-3 pr-3 text-xs">
+                          {c.jobs.map(j => j.frequency).filter((v, idx, arr) => arr.indexOf(v) === idx).join(', ')}
+                        </td>
+                        <td className="py-3 pr-3 text-xs">
+                          {c.jobs.flatMap(j => j.services || []).filter((s, idx, arr) => arr.indexOf(s) === idx).join(', ') || '—'}
+                        </td>
+                        <td className="py-3 pr-3 text-xs whitespace-nowrap">{fmtDate(startIso) || '—'}</td>
+                        <td className="py-3 pr-3 text-xs whitespace-nowrap">{fmtDate(endIso) || '—'}</td>
+                        <td className="py-3 pr-3 text-right">{money(c.perVisit)}</td>
+                        <td className="py-3 text-right">{money(c.monthly)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

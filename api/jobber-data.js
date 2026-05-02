@@ -930,20 +930,25 @@ const CLIENT_OVERRIDES = {
 const FREQ_TO_VPM = { 'W': 30/7, 'EOW': 30/14 };
 
 // Thin SELECT — all enrichment lives in hub_jobs columns populated at sync time.
+// Active vs ended split: a job is "ended" if status='archived' OR its end_date is past.
+// A contact is "active" if they have at least one still-running job; otherwise "ended".
 async function handleRecurringSummary(req, res) {
   try {
     const supabase = getSupabaseAdmin();
     const { data: jobs, error } = await supabase
       .from('hub_jobs')
       .select(`
-        id, contact_id, title,
+        id, contact_id, title, status,
         total_amount, frequency_label, visits_per_month,
         start_date, end_date,
         contacts:contact_id ( id, name, phone, email, address_line1, address_city, address_state, address_zip )
       `)
       .eq('type', 'recurring')
-      .eq('status', 'active');
+      .in('status', ['active', 'archived', 'completed']);
     if (error) throw new Error(error.message);
+
+    const todayISO = new Date().toISOString().slice(0, 10);
+    const isJobEnded = (j) => j.status !== 'active' || (j.end_date && j.end_date < todayISO);
 
     const byContact = new Map();
     for (const j of jobs || []) {
@@ -979,17 +984,31 @@ async function handleRecurringSummary(req, res) {
         monthly,
         startDate: j.start_date,
         endDate: j.end_date,
+        ended: isJobEnded(j),
         services: j.title ? [j.title] : [],
       });
       if (perVisit != null) entry.perVisit = (entry.perVisit || 0) + perVisit;
       if (monthly != null) entry.monthly = (entry.monthly || 0) + monthly;
     }
-    const list = Array.from(byContact.values()).sort((a, b) => a.name.localeCompare(b.name));
+
+    const active = [];
+    const ended = [];
+    for (const c of byContact.values()) {
+      const hasLive = c.jobs.some((j) => !j.ended);
+      (hasLive ? active : ended).push(c);
+    }
+    active.sort((a, b) => a.name.localeCompare(b.name));
+    ended.sort((a, b) => a.name.localeCompare(b.name));
+
+    const monthlyRecurringRevenue = Math.round(active.reduce((s, c) => s + (c.monthly || 0), 0) * 100) / 100;
+
     return res.json({
-      activeRecurringCount: list.length,
-      activeRecurringJobs: jobs?.length || 0,
-      recurringClientList: list,
-      monthlyRecurringRevenue: Math.round(list.reduce((s, c) => s + (c.monthly || 0), 0) * 100) / 100,
+      activeRecurringCount: active.length,
+      activeRecurringJobs: active.reduce((s, c) => s + c.jobs.filter((j) => !j.ended).length, 0),
+      recurringClientList: active,
+      endedClientList: ended,
+      endedRecurringCount: ended.length,
+      monthlyRecurringRevenue,
       source: 'hub',
     });
   } catch (err) {
