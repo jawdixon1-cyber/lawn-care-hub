@@ -317,23 +317,6 @@ export function RecurringClientsReport() {
         </div>
       </div>
 
-      {mappedClients.length > 0 && (
-        <div className="bg-card rounded-2xl border border-border-subtle overflow-hidden">
-          <div className="flex items-center justify-between px-5 py-3 border-b border-border-subtle">
-            <div className="flex items-center gap-2">
-              <MapPinned size={16} className="text-brand-text" />
-              <h2 className="text-sm font-bold text-primary">Where they are</h2>
-            </div>
-            <span className="text-xs text-muted">{mappedClients.length} of {uniqueClientCount} pinned</span>
-          </div>
-          <div style={{ height: 420 }}>
-            <Suspense fallback={<div className="w-full h-full bg-surface-alt flex items-center justify-center text-sm text-muted">Loading map…</div>}>
-              <ClientMapInner center={mapCenter} clients={mappedClients} onSelect={() => {}} />
-            </Suspense>
-          </div>
-        </div>
-      )}
-
       <div className="flex items-center gap-3">
         <input
           type="text"
@@ -464,6 +447,23 @@ export function RecurringClientsReport() {
             <ChevronRight size={16} className={`text-muted transition-transform ${showEnded ? 'rotate-90' : ''}`} />
           </button>
           {showEnded && <JobsTable rows={sortedEnded} dim />}
+        </div>
+      )}
+
+      {mappedClients.length > 0 && (
+        <div className="bg-card rounded-2xl border border-border-subtle overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-3 border-b border-border-subtle">
+            <div className="flex items-center gap-2">
+              <MapPinned size={16} className="text-brand-text" />
+              <h2 className="text-sm font-bold text-primary">Where they are</h2>
+            </div>
+            <span className="text-xs text-muted">{mappedClients.length} of {uniqueClientCount} pinned</span>
+          </div>
+          <div style={{ height: 420 }}>
+            <Suspense fallback={<div className="w-full h-full bg-surface-alt flex items-center justify-center text-sm text-muted">Loading map…</div>}>
+              <ClientMapInner center={mapCenter} clients={mappedClients} onSelect={() => {}} />
+            </Suspense>
+          </div>
         </div>
       )}
     </div>
