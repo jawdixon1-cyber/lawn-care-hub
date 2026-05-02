@@ -165,6 +165,7 @@ export function RecurringClientsReport() {
   const [laborByJob, setLaborByJob] = useState({});
   const [laborStatus, setLaborStatus] = useState('loading'); // loading | loaded | throttled | failed
   const [laborRetryAt, setLaborRetryAt] = useState(null);
+  const [laborAttempts, setLaborAttempts] = useState(0);
 
   useEffect(() => {
     try { localStorage.setItem(COL_ORDER_KEY, JSON.stringify(colOrder)); } catch { /* ignore */ }
@@ -203,33 +204,45 @@ export function RecurringClientsReport() {
   useEffect(() => { load(); }, [load]);
 
   // Profitability per job: parallel-fetch labor data for last 90 days, aggregate by Jobber jobId.
-  // Auto-retries once after Jobber throttle clears (~65s).
-  const fetchLabor = useCallback(async () => {
+  // Backoff schedule: 90s, 180s, 360s, then give up. Manual Retry button always works.
+  const RETRY_DELAYS = [90000, 180000, 360000];
+  const fetchLabor = useCallback(async (manual = false) => {
     const today = getTodayInTimezone();
     const start = new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10);
     setLaborStatus('loading');
     setLaborRetryAt(null);
+    if (manual) setLaborAttempts(0);
     try {
       const r = await fetch(`/api/jobber-data?action=labor&start=${start}&end=${today}&skipLineItems=1&skipJobExpenses=1`);
       const body = await r.json();
       if (!r.ok || body?.error) {
         if (r.status === 429 || body?.code === 'THROTTLED') {
-          setLaborStatus('throttled');
-          setLaborRetryAt(Date.now() + 65000);
+          setLaborAttempts(prev => {
+            const next = prev + 1;
+            const delay = RETRY_DELAYS[prev];
+            if (delay) {
+              setLaborStatus('throttled');
+              setLaborRetryAt(Date.now() + delay);
+            } else {
+              setLaborStatus('giveup');
+            }
+            return next;
+          });
           return;
         }
         throw new Error(body?.error || `HTTP ${r.status}`);
       }
       setLaborByJob(buildLaborByJob(body));
       setLaborStatus('loaded');
+      setLaborAttempts(0);
     } catch {
       setLaborStatus('failed');
     }
   }, []);
 
-  useEffect(() => { fetchLabor(); }, [fetchLabor]);
+  useEffect(() => { fetchLabor(true); }, [fetchLabor]);
 
-  // Auto-retry after throttle clears
+  // Auto-retry after throttle clears (until we run out of retries)
   useEffect(() => {
     if (laborStatus !== 'throttled' || !laborRetryAt) return;
     const ms = Math.max(0, laborRetryAt - Date.now());
@@ -249,6 +262,16 @@ export function RecurringClientsReport() {
       };
     });
   }, [laborByJob, laborStatus]);
+
+  const labelForLaborStatus = () => {
+    if (laborStatus === 'throttled') {
+      const waitSec = laborRetryAt ? Math.max(0, Math.round((laborRetryAt - Date.now()) / 1000)) : null;
+      return waitSec ? `Profit data: Jobber rate-limited us. Retrying in ~${waitSec}s.` : 'Profit data: Jobber rate-limited us. Retrying…';
+    }
+    if (laborStatus === 'giveup') return 'Profit data: Jobber rate-limited too many times. Hit Retry when ready.';
+    if (laborStatus === 'failed') return 'Profit data failed to load.';
+    return null;
+  };
 
   // Pull geocoded client coords from the dominate endpoint (same Jobber data, already geocoded server-side)
   useEffect(() => {
@@ -413,15 +436,15 @@ export function RecurringClientsReport() {
         </div>
       </div>
 
-      {laborStatus === 'throttled' && (
-        <div className="bg-amber-500/10 border border-amber-500/40 rounded-xl px-4 py-2 text-xs text-amber-300">
-          Profit data: Jobber is rate-limiting us. Auto-retrying in ~1 minute…
-        </div>
-      )}
-      {laborStatus === 'failed' && (
-        <div className="bg-red-500/10 border border-red-500/40 rounded-xl px-4 py-2 text-xs text-red-300 flex items-center justify-between gap-3">
-          <span>Profit data failed to load.</span>
-          <button onClick={() => fetchLabor()} className="font-semibold underline cursor-pointer">Retry</button>
+      {(laborStatus === 'throttled' || laborStatus === 'giveup' || laborStatus === 'failed') && (
+        <div className={`rounded-xl px-4 py-2 text-xs flex items-center justify-between gap-3 border
+          ${laborStatus === 'throttled'
+            ? 'bg-amber-500/10 border-amber-500/40 text-amber-300'
+            : 'bg-red-500/10 border-red-500/40 text-red-300'}`}>
+          <span>{labelForLaborStatus()}</span>
+          {laborStatus !== 'throttled' && (
+            <button onClick={() => fetchLabor(true)} className="font-semibold underline cursor-pointer">Retry</button>
+          )}
         </div>
       )}
 
