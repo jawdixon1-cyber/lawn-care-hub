@@ -36,7 +36,7 @@
       "maxDuration": 30
     },
     "api/cron/sync-jobber.js": {
-      "maxDuration": 60
+      "maxDuration": 300
     }
   },
   "crons": [

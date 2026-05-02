@@ -418,12 +418,14 @@ export default async function handler(req, res) {
 
       const recurringItems = sourceItems.filter(isRecurring);
       let perVisit = recurringItems.reduce((s, li) => s + (parseFloat(li.totalPrice) || 0), 0) || (job.total || 0);
-      // Manual overrides for clients whose Jobber line items don't match real billing
-      const PRICE_OVERRIDES = {
-        'jane elmore': 145,
+      // Manual overrides — keep in sync with api/jobber-data.js CLIENT_OVERRIDES
+      const CLIENT_OVERRIDES = {
+        'jane elmore':    { perVisit: 145 },
+        'aaron williams': { frequency: 'EOW' },
       };
       const overrideKey = name.toLowerCase();
-      if (PRICE_OVERRIDES[overrideKey] != null) perVisit = PRICE_OVERRIDES[overrideKey];
+      const override = CLIENT_OVERRIDES[overrideKey];
+      if (override?.perVisit != null) perVisit = override.perVisit;
       const services = [...new Set(recurringItems.map(li => (li.name || '').trim()).filter(Boolean))];
       const lineItemsBreakdown = sourceItems.map(li => ({
         name: li.name || '',
@@ -431,11 +433,17 @@ export default async function handler(req, res) {
         totalPrice: parseFloat(li.totalPrice) || 0,
         excluded: !isRecurring(li),
       }));
-      const { visitsPerMonth } = parseFrequency(calRule);
+      let { visitsPerMonth } = parseFrequency(calRule);
+      let frequency = freqLabel;
+      if (override?.frequency) {
+        frequency = override.frequency;
+        const FREQ_TO_VPM = { 'W': 30/7, 'EOW': 30/14 };
+        visitsPerMonth = FREQ_TO_VPM[override.frequency] || visitsPerMonth;
+      }
       const monthly = Math.round(perVisit * visitsPerMonth * 100) / 100;
       const startDate = job.visitSchedule?.startDate || job.startAt || null;
       const endDate = job.visitSchedule?.endDate || job.endAt || null;
-      clientRoster[cid].jobs.push({ jobId: job.id, jobNumber: job.jobNumber, frequency: freqLabel, perVisit, monthly, services, startDate, endDate, lineItems: lineItemsBreakdown, itemSource, billingType: job.billingType || 'unknown' });
+      clientRoster[cid].jobs.push({ jobId: job.id, jobNumber: job.jobNumber, frequency, perVisit, monthly, services, startDate, endDate, lineItems: lineItemsBreakdown, itemSource, billingType: job.billingType || 'unknown' });
       clientRoster[cid].totalPerVisit += perVisit;
       clientRoster[cid].totalMonthly += monthly;
     }

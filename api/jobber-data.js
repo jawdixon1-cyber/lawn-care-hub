@@ -828,7 +828,7 @@ function parseRecurrence(calendarRule) {
   return { label: `Every ${interval} weeks`, visitsPerMonth: 30 / (7 * interval) };
 }
 
-async function syncJobberVisits(supabase, sinceDays = 60, untilDays = 90) {
+export async function syncJobberVisits(supabase, sinceDays = 60, untilDays = 90) {
   const now = new Date();
   const startISO = new Date(now.getTime() - sinceDays * 86400000).toISOString();
   const endISO = new Date(now.getTime() + untilDays * 86400000).toISOString();
@@ -920,11 +920,14 @@ async function syncJobberVisits(supabase, sinceDays = 60, untilDays = 90) {
 
 // Recurring client summary derived from hub_visits + hub_jobs canonical store.
 // Source-agnostic — works whether data came from Jobber webhooks or own software.
-// Manual price overrides for clients whose Jobber data doesn't match real billing.
-// Lowercased name → per-visit price.
-const RECURRING_PRICE_OVERRIDES = {
-  'jane elmore': 145,
+// Manual overrides for clients whose synced data doesn't match real billing.
+// Lowercased client name → { perVisit, frequency: 'W' | 'EOW' }
+// Add new entries here as you spot mistakes; restart server to apply.
+const CLIENT_OVERRIDES = {
+  'jane elmore':    { perVisit: 145 },
+  'aaron williams': { frequency: 'EOW' },
 };
+const FREQ_TO_VPM = { 'W': 30/7, 'EOW': 30/14 };
 
 // Thin SELECT — all enrichment lives in hub_jobs columns populated at sync time.
 async function handleRecurringSummary(req, res) {
@@ -959,14 +962,19 @@ async function handleRecurringSummary(req, res) {
         });
       }
       const entry = byContact.get(j.contact_id);
-      let perVisit = j.total_amount != null ? Number(j.total_amount) : null;
       const overrideKey = (c.name || '').trim().toLowerCase();
-      if (RECURRING_PRICE_OVERRIDES[overrideKey] != null) perVisit = RECURRING_PRICE_OVERRIDES[overrideKey];
-      const visitsPerMonth = j.visits_per_month != null ? Number(j.visits_per_month) : null;
+      const override = CLIENT_OVERRIDES[overrideKey] || {};
+      let perVisit = override.perVisit != null
+        ? override.perVisit
+        : (j.total_amount != null ? Number(j.total_amount) : null);
+      const frequency = override.frequency || j.frequency_label || 'Recurring';
+      const visitsPerMonth = override.frequency
+        ? FREQ_TO_VPM[override.frequency] || null
+        : (j.visits_per_month != null ? Number(j.visits_per_month) : null);
       const monthly = perVisit != null && visitsPerMonth ? perVisit * visitsPerMonth : null;
       entry.jobs.push({
         title: j.title || 'Recurring service',
-        frequency: j.frequency_label || 'Recurring',
+        frequency,
         perVisit,
         monthly,
         startDate: j.start_date,
