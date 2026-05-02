@@ -106,9 +106,9 @@ async function fetchVisits(start, end) {
   let cursor = null, hasNext = true;
   let page = 0;
   while (hasNext) {
-    if (page++ > 0) await new Promise(r => setTimeout(r, 500));
+    if (page++ > 0) await new Promise(r => setTimeout(r, 1500));
     const after = cursor ? `, after: "${cursor}"` : '';
-    const data = await jobberQuery(`{ visits(first: 100${after}, filter: { startAt: { after: "${startISO}", before: "${endISO}" } }) { nodes { id title completedAt startAt endAt job { id jobNumber jobType jobStatus total client { firstName lastName } } } pageInfo { hasNextPage endCursor } } }`);
+    const data = await jobberQuery(`{ visits(first: 25${after}, filter: { startAt: { after: "${startISO}", before: "${endISO}" } }) { nodes { id title completedAt startAt endAt job { id jobNumber jobType jobStatus total client { firstName lastName } } } pageInfo { hasNextPage endCursor } } }`);
     allVisits.push(...(data.visits?.nodes || []));
     hasNext = data.visits?.pageInfo?.hasNextPage || false;
     cursor = data.visits?.pageInfo?.endCursor || null;
@@ -127,9 +127,9 @@ async function fetchTimesheets(start, end) {
   let cursor = null, hasNext = true;
   let page = 0;
   while (hasNext) {
-    if (page++ > 0) await new Promise(r => setTimeout(r, 500));
+    if (page++ > 0) await new Promise(r => setTimeout(r, 1500));
     const after = cursor ? `, after: "${cursor}"` : '';
-    const data = await jobberQuery(`{ timeSheetEntries(first: 100${after}, filter: { startAt: { after: "${startISO}", before: "${endISO}" } }) { nodes { id startAt endAt duration labourRate label user { id name { full } } job { id } } pageInfo { hasNextPage endCursor } } }`);
+    const data = await jobberQuery(`{ timeSheetEntries(first: 25${after}, filter: { startAt: { after: "${startISO}", before: "${endISO}" } }) { nodes { id startAt endAt duration labourRate label user { id name { full } } job { id } } pageInfo { hasNextPage endCursor } } }`);
     all.push(...(data.timeSheetEntries?.nodes || []));
     hasNext = data.timeSheetEntries?.pageInfo?.hasNextPage || false;
     cursor = data.timeSheetEntries?.pageInfo?.endCursor || null;
@@ -148,9 +148,9 @@ async function fetchExpenses(start, end) {
   let cursor = null, hasNext = true;
   let page = 0;
   while (hasNext) {
-    if (page++ > 0) await new Promise(r => setTimeout(r, 500));
+    if (page++ > 0) await new Promise(r => setTimeout(r, 1500));
     const after = cursor ? `, after: "${cursor}"` : '';
-    const data = await jobberQuery(`{ expenses(first: 100${after}, filter: { date: { after: "${startISO}", before: "${endISO}" } }) { nodes { id title total date description linkedJob { id jobNumber } paidBy { name { full } } } pageInfo { hasNextPage endCursor } } }`);
+    const data = await jobberQuery(`{ expenses(first: 25${after}, filter: { date: { after: "${startISO}", before: "${endISO}" } }) { nodes { id title total date description linkedJob { id jobNumber } paidBy { name { full } } } pageInfo { hasNextPage endCursor } } }`);
     all.push(...(data.expenses?.nodes || []));
     hasNext = data.expenses?.pageInfo?.hasNextPage || false;
     cursor = data.expenses?.pageInfo?.endCursor || null;
