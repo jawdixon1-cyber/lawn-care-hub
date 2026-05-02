@@ -15,10 +15,11 @@ const fmtDate = (iso) => {
 };
 
 const pct = (v) => v == null || isNaN(v) ? '—' : `${Math.round(v)}%`;
-const marginTone = (m) => m == null ? 'text-muted'
-  : m >= 50 ? 'text-emerald-500'
-  : m >= 30 ? 'text-amber-400'
-  : m >= 0 ? 'text-orange-500'
+// Labor % = labor cost / revenue. Lower is better.
+// ≤25% green, 25-50% amber, >50% red.
+const laborTone = (l) => l == null ? 'text-muted'
+  : l <= 25 ? 'text-emerald-500'
+  : l <= 50 ? 'text-amber-400'
   : 'text-red-500';
 
 // Column registry for the recurring-clients tables. Keep '#' implicit/first.
@@ -62,16 +63,16 @@ const COL_DEFS = {
     label: 'Monthly', sortField: 'monthly', align: 'right',
     cell: (j, dim) => <span className={`font-semibold ${dim ? '' : 'text-brand-text'}`}>{money(j.monthly)}</span>,
   },
-  profitPct: {
-    label: 'Profit %', sortField: 'profitPct', align: 'right',
+  laborPct: {
+    label: 'Labor %', sortField: 'laborPct', align: 'right',
     cell: (j) => {
       if (j.profitLoading) return <span className="text-muted text-xs">…</span>;
-      if (j.profitPct == null) return <span className="text-muted">—</span>;
-      return <span className={`font-semibold ${marginTone(j.profitPct)}`}>{pct(j.profitPct)}</span>;
+      if (j.laborPct == null) return <span className="text-muted">—</span>;
+      return <span className={`font-semibold ${laborTone(j.laborPct)}`}>{pct(j.laborPct)}</span>;
     },
   },
 };
-const DEFAULT_COL_ORDER = ['name', 'title', 'frequency', 'start', 'end', 'perVisit', 'monthly', 'profitPct'];
+const DEFAULT_COL_ORDER = ['name', 'title', 'frequency', 'start', 'end', 'perVisit', 'monthly', 'laborPct'];
 const COL_ORDER_KEY = 'recurring-clients-col-order';
 
 function loadColOrder() {
@@ -86,7 +87,7 @@ function loadColOrder() {
   return DEFAULT_COL_ORDER;
 }
 
-// Aggregate labor visits by Jobber jobId → { rev, labor, expenses, margin }
+// Aggregate labor visits by Jobber jobId → { rev, labor, expenses, laborPct }
 function buildLaborByJob(daysObj) {
   const map = {};
   for (const day of Object.values(daysObj || {})) {
@@ -100,7 +101,7 @@ function buildLaborByJob(daysObj) {
   }
   for (const id in map) {
     const m = map[id];
-    m.margin = m.rev > 0 ? ((m.rev - m.labor - m.expenses) / m.rev) * 100 : null;
+    m.laborPct = m.rev > 0 ? (m.labor / m.rev) * 100 : null;
   }
   return map;
 }
@@ -250,7 +251,7 @@ export function RecurringClientsReport() {
     return () => clearTimeout(t);
   }, [laborStatus, laborRetryAt, fetchLabor]);
 
-  // Enrich job rows with profitPct from the labor lookup.
+  // Enrich job rows with laborPct from the labor lookup.
   const enrich = useCallback((rows) => {
     const isPending = laborStatus === 'loading' || laborStatus === 'throttled';
     return rows.map(r => {
@@ -258,7 +259,7 @@ export function RecurringClientsReport() {
       return {
         ...r,
         profitLoading: isPending && !m,
-        profitPct: m?.margin ?? null,
+        laborPct: m?.laborPct ?? null,
       };
     });
   }, [laborByJob, laborStatus]);
@@ -325,7 +326,7 @@ export function RecurringClientsReport() {
         case 'frequency': return (freqSortVal(a) - freqSortVal(b)) * dir;
         case 'perVisit': return ((a.perVisit ?? -Infinity) - (b.perVisit ?? -Infinity)) * dir;
         case 'monthly': return ((a.monthly ?? -Infinity) - (b.monthly ?? -Infinity)) * dir;
-        case 'profitPct': return ((a.profitPct ?? -Infinity) - (b.profitPct ?? -Infinity)) * dir;
+        case 'laborPct': return ((a.laborPct ?? Infinity) - (b.laborPct ?? Infinity)) * dir;
         case 'start': return (startMs(a) - startMs(b)) * dir;
         case 'title': return (a.title || '').localeCompare(b.title || '') * dir;
         default: return a.name.localeCompare(b.name) * dir;
