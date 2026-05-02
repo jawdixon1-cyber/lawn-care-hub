@@ -804,7 +804,8 @@ const HUB_VISITS_QUERY = `
         id title startAt endAt completedAt
         property { address { street1 street2 city province postalCode } }
         job {
-          id jobNumber jobType jobStatus title total
+          id jobNumber jobType jobStatus title total startAt endAt
+          visitSchedule { startDate endDate recurrenceSchedule { calendarRule } }
           client { id firstName lastName companyName }
         }
       }
@@ -812,6 +813,20 @@ const HUB_VISITS_QUERY = `
     }
   }
 `;
+
+// Parse RRULE → frequency label + visits-per-month.
+// Hey Jude's only runs Weekly (W) or every-other-week (EOW); anything else stays "Recurring".
+function parseRecurrence(calendarRule) {
+  if (!calendarRule) return { label: null, visitsPerMonth: null };
+  const freqMatch = calendarRule.match(/FREQ=(\w+)/);
+  const intervalMatch = calendarRule.match(/INTERVAL=(\d+)/);
+  const freq = freqMatch ? freqMatch[1] : null;
+  const interval = intervalMatch ? parseInt(intervalMatch[1]) : 1;
+  if (freq !== 'WEEKLY') return { label: 'Recurring', visitsPerMonth: null };
+  if (interval === 1) return { label: 'W', visitsPerMonth: 30 / 7 };
+  if (interval === 2) return { label: 'EOW', visitsPerMonth: 30 / 14 };
+  return { label: `Every ${interval} weeks`, visitsPerMonth: 30 / (7 * interval) };
+}
 
 async function syncJobberVisits(supabase, sinceDays = 60, untilDays = 90) {
   const now = new Date();
@@ -846,6 +861,8 @@ async function syncJobberVisits(supabase, sinceDays = 60, untilDays = 90) {
     if (jobBySourceId.has(jobberJob.id)) return jobBySourceId.get(jobberJob.id);
     const typeMap = { ONE_OFF: 'one_off', RECURRING: 'recurring' };
     const statusMap = { ACTIVE: 'active', ARCHIVED: 'archived', LATE: 'active', UPCOMING: 'active', TODAY: 'active', ACTION_REQUIRED: 'active', ON_HOLD: 'active', UNSCHEDULED: 'active', REQUIRES_INVOICING: 'completed', LATE_TO_INVOICE: 'completed', INVOICED: 'completed' };
+    const calendarRule = jobberJob.visitSchedule?.recurrenceSchedule?.calendarRule || null;
+    const { label: freqLabel, visitsPerMonth } = parseRecurrence(calendarRule);
     const row = {
       contact_id: contactId,
       title: jobberJob.title || null,
@@ -853,6 +870,11 @@ async function syncJobberVisits(supabase, sinceDays = 60, untilDays = 90) {
       status: statusMap[jobberJob.jobStatus] || 'active',
       job_number: jobberJob.jobNumber ? String(jobberJob.jobNumber) : null,
       total_amount: jobberJob.total != null ? Number(jobberJob.total) : null,
+      start_date: jobberJob.visitSchedule?.startDate || (jobberJob.startAt ? jobberJob.startAt.slice(0, 10) : null),
+      end_date: jobberJob.visitSchedule?.endDate || (jobberJob.endAt ? jobberJob.endAt.slice(0, 10) : null),
+      calendar_rule: calendarRule,
+      frequency_label: freqLabel,
+      visits_per_month: visitsPerMonth,
       source: 'jobber',
       source_id: jobberJob.id,
     };
@@ -898,47 +920,30 @@ async function syncJobberVisits(supabase, sinceDays = 60, untilDays = 90) {
 
 // Recurring client summary derived from hub_visits + hub_jobs canonical store.
 // Source-agnostic — works whether data came from Jobber webhooks or own software.
+// Manual price overrides for clients whose Jobber data doesn't match real billing.
+// Lowercased name → per-visit price.
+const RECURRING_PRICE_OVERRIDES = {
+  'jane elmore': 145,
+};
+
+// Thin SELECT — all enrichment lives in hub_jobs columns populated at sync time.
 async function handleRecurringSummary(req, res) {
   try {
     const supabase = getSupabaseAdmin();
     const { data: jobs, error } = await supabase
       .from('hub_jobs')
-      .select('id, contact_id, title, total_amount, contacts:contact_id ( id, name, phone, email, address_line1, address_city, address_state, address_zip )')
+      .select(`
+        id, contact_id, title,
+        total_amount, frequency_label, visits_per_month,
+        start_date, end_date,
+        contacts:contact_id ( id, name, phone, email, address_line1, address_city, address_state, address_zip )
+      `)
       .eq('type', 'recurring')
       .eq('status', 'active');
     if (error) throw new Error(error.message);
 
-    // Pull all visits for these jobs in one query
-    const jobIds = (jobs || []).map((j) => j.id);
-    let visitsByJob = new Map();
-    if (jobIds.length > 0) {
-      const { data: visits } = await supabase
-        .from('hub_visits')
-        .select('job_id, start_at, completed_at')
-        .in('job_id', jobIds);
-      for (const v of visits || []) {
-        if (!visitsByJob.has(v.job_id)) visitsByJob.set(v.job_id, []);
-        visitsByJob.get(v.job_id).push(v);
-      }
-    }
-
-    // Estimate visits-per-month from completed visits in the last 90 days
-    const now = Date.now();
-    const ninetyDaysAgo = now - 90 * 86400000;
-    const estimateMonthlyCadence = (visits) => {
-      const recent = visits.filter((v) => {
-        const t = new Date(v.completed_at || v.start_at).getTime();
-        return t >= ninetyDaysAgo && t <= now;
-      });
-      if (recent.length === 0) return 0;
-      // visits per month over the recency window
-      return recent.length / 3;
-    };
-
-    // Group by contact
     const byContact = new Map();
     for (const j of jobs || []) {
-      if (!j.contact_id) continue;
       const c = j.contacts;
       if (!c) continue;
       if (!byContact.has(j.contact_id)) {
@@ -949,47 +954,34 @@ async function handleRecurringSummary(req, res) {
           email: c.email,
           address: [c.address_line1, c.address_city, c.address_state].filter(Boolean).join(', '),
           jobs: [],
-          monthly: 0,
-          perVisit: 0,
+          monthly: null,
+          perVisit: null,
         });
       }
       const entry = byContact.get(j.contact_id);
-      const visits = visitsByJob.get(j.id) || [];
-      const sortedByStart = [...visits].sort((a, b) => new Date(a.start_at) - new Date(b.start_at));
-      const completed = sortedByStart.filter((v) => v.completed_at);
-      const startDate = sortedByStart[0]?.start_at || null;
-      const lastServiceDate = completed[completed.length - 1]?.completed_at || null;
-      const perVisit = j.total_amount != null ? Number(j.total_amount) : null;
-      const visitsPerMonth = estimateMonthlyCadence(sortedByStart);
-      const monthly = perVisit != null ? perVisit * visitsPerMonth : null;
-      const freqLabel = visitsPerMonth >= 3.5 ? 'Weekly' : visitsPerMonth >= 1.7 ? 'Bi-weekly' : visitsPerMonth >= 0.8 ? 'Monthly' : 'Recurring';
+      let perVisit = j.total_amount != null ? Number(j.total_amount) : null;
+      const overrideKey = (c.name || '').trim().toLowerCase();
+      if (RECURRING_PRICE_OVERRIDES[overrideKey] != null) perVisit = RECURRING_PRICE_OVERRIDES[overrideKey];
+      const visitsPerMonth = j.visits_per_month != null ? Number(j.visits_per_month) : null;
+      const monthly = perVisit != null && visitsPerMonth ? perVisit * visitsPerMonth : null;
       entry.jobs.push({
         title: j.title || 'Recurring service',
-        frequency: freqLabel,
+        frequency: j.frequency_label || 'Recurring',
         perVisit,
         monthly,
-        startDate,
-        lastServiceDate,
+        startDate: j.start_date,
+        endDate: j.end_date,
         services: j.title ? [j.title] : [],
       });
-      if (perVisit != null) entry.perVisit += perVisit;
-      if (monthly != null) entry.monthly += monthly;
+      if (perVisit != null) entry.perVisit = (entry.perVisit || 0) + perVisit;
+      if (monthly != null) entry.monthly = (entry.monthly || 0) + monthly;
     }
-    const list = Array.from(byContact.values()).map((entry) => {
-      const allStartDates = entry.jobs.map((j) => j.startDate).filter(Boolean);
-      const allLastDates = entry.jobs.map((j) => j.lastServiceDate).filter(Boolean);
-      return {
-        ...entry,
-        firstServiceDate: allStartDates.length ? allStartDates.sort()[0] : null,
-        lastServiceDate: allLastDates.length ? allLastDates.sort().slice(-1)[0] : null,
-      };
-    }).sort((a, b) => a.name.localeCompare(b.name));
-
+    const list = Array.from(byContact.values()).sort((a, b) => a.name.localeCompare(b.name));
     return res.json({
       activeRecurringCount: list.length,
       activeRecurringJobs: jobs?.length || 0,
       recurringClientList: list,
-      monthlyRecurringRevenue: Math.round(list.reduce((s, c) => s + c.monthly, 0) * 100) / 100,
+      monthlyRecurringRevenue: Math.round(list.reduce((s, c) => s + (c.monthly || 0), 0) * 100) / 100,
       source: 'hub',
     });
   } catch (err) {

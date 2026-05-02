@@ -45,7 +45,8 @@ const VISIT_QUERY = `
       id title startAt endAt completedAt
       property { address { street1 street2 city province postalCode } }
       job {
-        id jobNumber jobType jobStatus title total
+        id jobNumber jobType jobStatus title total startAt endAt
+        visitSchedule { startDate endDate recurrenceSchedule { calendarRule } }
         client { id firstName lastName companyName }
       }
     }
@@ -55,11 +56,24 @@ const VISIT_QUERY = `
 const JOB_QUERY = `
   query GetJob($id: EncodedId!) {
     job(id: $id) {
-      id jobNumber jobType jobStatus title total
+      id jobNumber jobType jobStatus title total startAt endAt
+      visitSchedule { startDate endDate recurrenceSchedule { calendarRule } }
       client { id firstName lastName companyName }
     }
   }
 `;
+
+function parseRecurrence(calendarRule) {
+  if (!calendarRule) return { label: null, visitsPerMonth: null };
+  const freqMatch = calendarRule.match(/FREQ=(\w+)/);
+  const intervalMatch = calendarRule.match(/INTERVAL=(\d+)/);
+  const freq = freqMatch ? freqMatch[1] : null;
+  const interval = intervalMatch ? parseInt(intervalMatch[1]) : 1;
+  if (freq !== 'WEEKLY') return { label: 'Recurring', visitsPerMonth: null };
+  if (interval === 1) return { label: 'W', visitsPerMonth: 30 / 7 };
+  if (interval === 2) return { label: 'EOW', visitsPerMonth: 30 / 14 };
+  return { label: `Every ${interval} weeks`, visitsPerMonth: 30 / (7 * interval) };
+}
 
 function formatAddress(addr) {
   if (!addr) return null;
@@ -86,6 +100,8 @@ async function upsertJob(supabase, jobberJob, contactId) {
   if (!jobberJob?.id) return null;
   const typeMap = { ONE_OFF: 'one_off', RECURRING: 'recurring' };
   const statusMap = { ACTIVE: 'active', ARCHIVED: 'archived', LATE: 'active', UPCOMING: 'active', TODAY: 'active', ACTION_REQUIRED: 'active', ON_HOLD: 'active', UNSCHEDULED: 'active', REQUIRES_INVOICING: 'completed', LATE_TO_INVOICE: 'completed', INVOICED: 'completed' };
+  const calendarRule = jobberJob.visitSchedule?.recurrenceSchedule?.calendarRule || null;
+  const { label: freqLabel, visitsPerMonth } = parseRecurrence(calendarRule);
   const row = {
     contact_id: contactId,
     title: jobberJob.title || null,
@@ -93,6 +109,11 @@ async function upsertJob(supabase, jobberJob, contactId) {
     status: statusMap[jobberJob.jobStatus] || 'active',
     job_number: jobberJob.jobNumber ? String(jobberJob.jobNumber) : null,
     total_amount: jobberJob.total != null ? Number(jobberJob.total) : null,
+    start_date: jobberJob.visitSchedule?.startDate || (jobberJob.startAt ? jobberJob.startAt.slice(0, 10) : null),
+    end_date: jobberJob.visitSchedule?.endDate || (jobberJob.endAt ? jobberJob.endAt.slice(0, 10) : null),
+    calendar_rule: calendarRule,
+    frequency_label: freqLabel,
+    visits_per_month: visitsPerMonth,
     source: 'jobber',
     source_id: jobberJob.id,
   };

@@ -74,27 +74,13 @@ export function RecurringClientsReport() {
   const [geocoded, setGeocoded] = useState([]);
   const [expanded, setExpanded] = useState(null);
 
-  const load = useCallback((refresh = false) => {
+  const load = useCallback(() => {
     setLoading(true);
     setError(null);
-    const today = getTodayInTimezone();
-    const yearStart = today.slice(0, 4) + '-01-01';
-    const url = `/api/commander/summary?start=${yearStart}&end=${today}${refresh ? '&refresh=1' : ''}`;
-    fetch(url)
+    fetch('/api/jobber-data?action=recurring-summary')
       .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
-      .then(async d => {
-        const list = d?.recurringClientList || [];
-        if (list.length > 0) { setClients(list); return; }
-        // Commander returned nothing (likely throttled) — fall back to canonical hub store
-        const fb = await fetch('/api/jobber-data?action=recurring-summary').then(r => r.ok ? r.json() : null).catch(() => null);
-        setClients(fb?.recurringClientList || []);
-      })
-      .catch(async err => {
-        // Try the hub fallback before giving up
-        const fb = await fetch('/api/jobber-data?action=recurring-summary').then(r => r.ok ? r.json() : null).catch(() => null);
-        if (fb?.recurringClientList?.length) setClients(fb.recurringClientList);
-        else setError(err.message || 'Failed to load');
-      })
+      .then(d => setClients(d?.recurringClientList || []))
+      .catch(err => setError(err.message || 'Failed to load'))
       .finally(() => setLoading(false));
   }, []);
 
@@ -169,9 +155,10 @@ export function RecurringClientsReport() {
     else { setSortKey(key); setSortDir(key === 'name' || key === 'frequency' ? 'asc' : 'desc'); }
   };
 
-  const totalPerVisit = clients.reduce((s, c) => s + c.perVisit, 0);
-  const totalMonthly = clients.reduce((s, c) => s + c.monthly, 0);
-  const avgMonthly = clients.length > 0 ? totalMonthly / clients.length : 0;
+  const totalPerVisit = clients.reduce((s, c) => s + (c.perVisit || 0), 0);
+  const totalMonthly = clients.reduce((s, c) => s + (c.monthly || 0), 0);
+  const clientsWithPrice = clients.filter(c => c.monthly != null).length;
+  const avgMonthly = clientsWithPrice > 0 ? totalMonthly / clientsWithPrice : 0;
 
   const SortHeader = ({ field, align, children }) => (
     <th
@@ -256,7 +243,7 @@ export function RecurringClientsReport() {
           />
         </div>
 
-        {error && <p className="text-sm text-red-500 py-8 text-center">{error}</p>}
+        {error && clients.length === 0 && <p className="text-sm text-red-500 py-8 text-center">{error}</p>}
         {!error && loading && clients.length === 0 && <p className="text-sm text-muted py-16 text-center">Loading…</p>}
         {!error && !loading && clients.length === 0 && <p className="text-sm text-muted py-16 text-center">No recurring clients found.</p>}
 

@@ -760,22 +760,20 @@ function OwnerDashboard() {
     const today = getTodayInTimezone();
     const yearStart = today.slice(0, 4) + '-01-01';
 
-    // Single commander call (cached server-side for 5 min), then ytd revenue,
-    // plus a hub-sourced recurring summary as a Jobber-throttle-resilient fallback
+    // Two endpoints: recurring counts/revenue from hub, sales KPIs from commander, YTD from jobber-data
     (async () => {
-      const yearData = await fetch(`/api/commander/summary?start=${yearStart}&end=${today}`).then(r => r.ok ? r.json() : null).catch(() => null);
-      const ytd = await fetch('/api/jobber-data?action=ytd-revenue').then(r => r.ok ? r.json() : null).catch(() => null);
       const recurring = await fetch('/api/jobber-data?action=recurring-summary').then(r => r.ok ? r.json() : null).catch(() => null);
-      return [yearData, ytd, recurring];
-    })().then(([yearData, ytd, recurring]) => {
-      // Only update if we got real data (don't overwrite cache with zeros)
-      if (!yearData && !ytd && !recurring) return;
+      const ytd = await fetch('/api/jobber-data?action=ytd-revenue').then(r => r.ok ? r.json() : null).catch(() => null);
+      const yearData = await fetch(`/api/commander/summary?start=${yearStart}&end=${today}`).then(r => r.ok ? r.json() : null).catch(() => null);
+      return [recurring, ytd, yearData];
+    })().then(([recurring, ytd, yearData]) => {
+      if (!recurring && !ytd && !yearData) return;
       const sent = yearData?.kpis?.quotesSent || 0;
       const approved = yearData?.kpis?.quotesApproved || 0;
-      // Prefer commander's count when available (it's date-filtered), otherwise use hub_jobs count
-      const recurringCount = yearData?.activeRecurringCount ?? recurring?.activeRecurringCount ?? 0;
       const newData = {
-        clients: recurringCount,
+        clients: recurring?.activeRecurringCount || 0,
+        monthlyRecurringRevenue: recurring?.monthlyRecurringRevenue || 0,
+        recurringClientList: recurring?.recurringClientList || [],
         newLeads: yearData?.kpis?.newLeads || 0,
         quotesSent: sent,
         quotesApproved: approved,
@@ -784,8 +782,6 @@ function OwnerDashboard() {
         monthlyRevAdd: yearData?.kpis?.startsMonthlyRevenue || 0,
         ytdRevenue: ytd?.ytdRevenue || 0,
         jobCount: ytd?.jobCount || 0,
-        monthlyRecurringRevenue: yearData?.monthlyRecurringRevenue || 0,
-        recurringClientList: yearData?.recurringClientList || [],
       };
       setData(newData);
       try { localStorage.setItem('greenteam-dashboard-cache', JSON.stringify(newData)); } catch {}

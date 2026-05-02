@@ -143,7 +143,7 @@ async function fetchRecurringJobs() {
 // ── Estimate monthly value from visit total and RRULE ──
 
 function parseFrequency(calendarRule) {
-  if (!calendarRule) return { label: 'Unknown', visitsPerMonth: 0 };
+  if (!calendarRule) return { label: 'Recurring', visitsPerMonth: 0 };
   const freqMatch = calendarRule.match(/FREQ=(\w+)/);
   const intervalMatch = calendarRule.match(/INTERVAL=(\d+)/);
   const freq = freqMatch ? freqMatch[1] : 'WEEKLY';
@@ -154,7 +154,7 @@ function parseFrequency(calendarRule) {
   switch (freq) {
     case 'WEEKLY':
       visitsPerMonth = 4.33 / interval;
-      label = interval === 1 ? 'Weekly' : interval === 2 ? 'Every 2 weeks' : `Every ${interval} weeks`;
+      label = interval === 1 ? 'W' : interval === 2 ? 'EOW' : `Every ${interval} weeks`;
       break;
     case 'DAILY':
       visitsPerMonth = 30 / interval;
@@ -166,7 +166,7 @@ function parseFrequency(calendarRule) {
       break;
     default:
       visitsPerMonth = 4.33;
-      label = 'Weekly';
+      label = 'W';
   }
   return { label, visitsPerMonth };
 }
@@ -417,7 +417,13 @@ export default async function handler(req, res) {
       }
 
       const recurringItems = sourceItems.filter(isRecurring);
-      const perVisit = recurringItems.reduce((s, li) => s + (parseFloat(li.totalPrice) || 0), 0) || (job.total || 0);
+      let perVisit = recurringItems.reduce((s, li) => s + (parseFloat(li.totalPrice) || 0), 0) || (job.total || 0);
+      // Manual overrides for clients whose Jobber line items don't match real billing
+      const PRICE_OVERRIDES = {
+        'jane elmore': 145,
+      };
+      const overrideKey = name.toLowerCase();
+      if (PRICE_OVERRIDES[overrideKey] != null) perVisit = PRICE_OVERRIDES[overrideKey];
       const services = [...new Set(recurringItems.map(li => (li.name || '').trim()).filter(Boolean))];
       const lineItemsBreakdown = sourceItems.map(li => ({
         name: li.name || '',
