@@ -22,7 +22,7 @@ const VISITS_QUERY = `
         id title startAt endAt completedAt
         property { address { street1 street2 city province postalCode } }
         job {
-          id jobNumber jobType jobStatus title
+          id jobNumber jobType jobStatus title total
           client { id firstName lastName companyName }
         }
       }
@@ -61,6 +61,7 @@ async function syncVisits(supabase, sinceDays = 60, untilDays = 90) {
       type: typeMap[jj.jobType] || 'one_off',
       status: statusMap[jj.jobStatus] || 'active',
       job_number: jj.jobNumber ? String(jj.jobNumber) : null,
+      total_amount: jj.total != null ? Number(jj.total) : null,
       source: 'jobber',
       source_id: jj.id,
     };

@@ -6,7 +6,7 @@ import { getTodayInTimezone } from '../utils/timezone';
 const ClientMapInner = lazy(() => import('../components/ClientMapInner'));
 
 const FREQ_ORDER = { 'Weekly': 1, 'Every 2 weeks': 2, 'Monthly': 3 };
-const money = (v) => `$${Math.round(v).toLocaleString()}`;
+const money = (v) => v == null ? '—' : `$${Math.round(v).toLocaleString()}`;
 const fmtDate = (iso) => {
   if (!iso) return null;
   const d = new Date(iso);

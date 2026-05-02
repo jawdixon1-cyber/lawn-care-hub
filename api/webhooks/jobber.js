@@ -45,7 +45,7 @@ const VISIT_QUERY = `
       id title startAt endAt completedAt
       property { address { street1 street2 city province postalCode } }
       job {
-        id jobNumber jobType jobStatus title
+        id jobNumber jobType jobStatus title total
         client { id firstName lastName companyName }
       }
     }
@@ -55,7 +55,7 @@ const VISIT_QUERY = `
 const JOB_QUERY = `
   query GetJob($id: EncodedId!) {
     job(id: $id) {
-      id jobNumber jobType jobStatus title
+      id jobNumber jobType jobStatus title total
       client { id firstName lastName companyName }
     }
   }
@@ -92,6 +92,7 @@ async function upsertJob(supabase, jobberJob, contactId) {
     type: typeMap[jobberJob.jobType] || 'one_off',
     status: statusMap[jobberJob.jobStatus] || 'active',
     job_number: jobberJob.jobNumber ? String(jobberJob.jobNumber) : null,
+    total_amount: jobberJob.total != null ? Number(jobberJob.total) : null,
     source: 'jobber',
     source_id: jobberJob.id,
   };
