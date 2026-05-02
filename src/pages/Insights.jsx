@@ -16,10 +16,10 @@ const fmtDate = (iso) => {
 
 const pct = (v) => v == null || isNaN(v) ? '—' : `${Math.round(v)}%`;
 // Labor % = labor cost / revenue. Lower is better.
-// ≤25% green, 25-50% amber, >50% red.
+// ≤25% green, 26-30% amber, >30% red.
 const laborTone = (l) => l == null ? 'text-muted'
   : l <= 25 ? 'text-emerald-500'
-  : l <= 50 ? 'text-amber-400'
+  : l <= 30 ? 'text-amber-400'
   : 'text-red-500';
 
 // Column registry for the recurring-clients tables. Keep '#' implicit/first.
