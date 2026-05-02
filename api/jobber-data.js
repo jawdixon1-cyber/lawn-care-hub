@@ -929,9 +929,15 @@ const CLIENT_OVERRIDES = {
 };
 const FREQ_TO_VPM = { 'W': 30/7, 'EOW': 30/14 };
 
+// Title-based classifier — anything mentioning lawn/mow/maint counts as lawn maintenance,
+// everything else (shrub trimming, fertilization, leaf removal, etc.) is "other."
+// Untitled jobs default to lawn since lawn is the dominant service.
+const LAWN_TITLE_RE = /lawn|mow|maint|grass|turf/i;
+const isLawnTitle = (title) => !title || !title.trim() || LAWN_TITLE_RE.test(title);
+
 // Thin SELECT — all enrichment lives in hub_jobs columns populated at sync time.
-// Active vs ended split: a job is "ended" if status='archived' OR its end_date is past.
-// A contact is "active" if they have at least one still-running job; otherwise "ended".
+// Each recurring job becomes one row, classified as lawn vs other vs ended.
+// A job is "ended" if status != 'active' OR its end_date has passed.
 async function handleRecurringSummary(req, res) {
   try {
     const supabase = getSupabaseAdmin();
@@ -950,26 +956,19 @@ async function handleRecurringSummary(req, res) {
     const todayISO = new Date().toISOString().slice(0, 10);
     const isJobEnded = (j) => j.status !== 'active' || (j.end_date && j.end_date < todayISO);
 
+    // Per-job rows with pricing + classification.
+    const lawnJobs = [];
+    const otherJobs = [];
+    const endedJobs = [];
+    // Per-contact aggregation kept for backward compat (Commander, DailyChecklist tile).
     const byContact = new Map();
+
     for (const j of jobs || []) {
       const c = j.contacts;
       if (!c) continue;
-      if (!byContact.has(j.contact_id)) {
-        byContact.set(j.contact_id, {
-          id: c.id,
-          name: c.name,
-          phone: c.phone,
-          email: c.email,
-          address: [c.address_line1, c.address_city, c.address_state].filter(Boolean).join(', '),
-          jobs: [],
-          monthly: null,
-          perVisit: null,
-        });
-      }
-      const entry = byContact.get(j.contact_id);
       const overrideKey = (c.name || '').trim().toLowerCase();
       const override = CLIENT_OVERRIDES[overrideKey] || {};
-      let perVisit = override.perVisit != null
+      const perVisit = override.perVisit != null
         ? override.perVisit
         : (j.total_amount != null ? Number(j.total_amount) : null);
       const frequency = override.frequency || j.frequency_label || 'Recurring';
@@ -977,37 +976,79 @@ async function handleRecurringSummary(req, res) {
         ? FREQ_TO_VPM[override.frequency] || null
         : (j.visits_per_month != null ? Number(j.visits_per_month) : null);
       const monthly = perVisit != null && visitsPerMonth ? perVisit * visitsPerMonth : null;
-      entry.jobs.push({
+      const ended = isJobEnded(j);
+
+      const row = {
+        contactId: c.id,
+        name: c.name,
+        phone: c.phone,
+        email: c.email,
+        address: [c.address_line1, c.address_city, c.address_state].filter(Boolean).join(', '),
         title: j.title || 'Recurring service',
         frequency,
         perVisit,
         monthly,
         startDate: j.start_date,
         endDate: j.end_date,
-        ended: isJobEnded(j),
-        services: j.title ? [j.title] : [],
-      });
-      if (perVisit != null) entry.perVisit = (entry.perVisit || 0) + perVisit;
-      if (monthly != null) entry.monthly = (entry.monthly || 0) + monthly;
+        ended,
+        category: isLawnTitle(j.title) ? 'lawn' : 'other',
+      };
+
+      if (ended) endedJobs.push(row);
+      else if (row.category === 'lawn') lawnJobs.push(row);
+      else otherJobs.push(row);
+
+      // Backward-compat per-contact aggregation (active jobs only).
+      if (!ended) {
+        if (!byContact.has(j.contact_id)) {
+          byContact.set(j.contact_id, {
+            id: c.id,
+            name: c.name,
+            phone: c.phone,
+            email: c.email,
+            address: row.address,
+            jobs: [],
+            monthly: null,
+            perVisit: null,
+          });
+        }
+        const entry = byContact.get(j.contact_id);
+        entry.jobs.push({
+          title: row.title,
+          frequency,
+          perVisit,
+          monthly,
+          startDate: row.startDate,
+          endDate: row.endDate,
+          services: j.title ? [j.title] : [],
+        });
+        if (perVisit != null) entry.perVisit = (entry.perVisit || 0) + perVisit;
+        if (monthly != null) entry.monthly = (entry.monthly || 0) + monthly;
+      }
     }
 
-    const active = [];
-    const ended = [];
-    for (const c of byContact.values()) {
-      const hasLive = c.jobs.some((j) => !j.ended);
-      (hasLive ? active : ended).push(c);
-    }
-    active.sort((a, b) => a.name.localeCompare(b.name));
-    ended.sort((a, b) => a.name.localeCompare(b.name));
+    const sortRows = (a, b) => a.name.localeCompare(b.name) || a.title.localeCompare(b.title);
+    lawnJobs.sort(sortRows);
+    otherJobs.sort(sortRows);
+    endedJobs.sort(sortRows);
 
-    const monthlyRecurringRevenue = Math.round(active.reduce((s, c) => s + (c.monthly || 0), 0) * 100) / 100;
+    const activeClientList = Array.from(byContact.values()).sort((a, b) => a.name.localeCompare(b.name));
+    const uniqueActiveClientCount = activeClientList.length;
+    const monthlyRecurringRevenue = Math.round(
+      [...lawnJobs, ...otherJobs].reduce((s, r) => s + (r.monthly || 0), 0) * 100
+    ) / 100;
 
     return res.json({
-      activeRecurringCount: active.length,
-      activeRecurringJobs: active.reduce((s, c) => s + c.jobs.filter((j) => !j.ended).length, 0),
-      recurringClientList: active,
-      endedClientList: ended,
-      endedRecurringCount: ended.length,
+      // New per-job structure
+      lawnJobs,
+      otherJobs,
+      endedJobs,
+      uniqueActiveClientCount,
+      // Backward-compat fields
+      activeRecurringCount: uniqueActiveClientCount,
+      activeRecurringJobs: lawnJobs.length + otherJobs.length,
+      recurringClientList: activeClientList,
+      endedRecurringCount: endedJobs.length,
       monthlyRecurringRevenue,
       source: 'hub',
     });
