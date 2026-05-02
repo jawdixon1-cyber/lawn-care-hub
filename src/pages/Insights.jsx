@@ -157,9 +157,8 @@ export function RecurringClientsReport() {
   const sumMonthly = (list) => list.reduce((s, j) => s + (j.monthly || 0), 0);
   const lawnMonthly = sumMonthly(lawnJobs);
   const otherMonthly = sumMonthly(otherJobs);
-  const totalMonthly = lawnMonthly + otherMonthly;
   const uniqueClientCount = activeClients.length;
-  const avgMonthly = uniqueClientCount > 0 ? totalMonthly / uniqueClientCount : 0;
+  const avgMonthly = uniqueClientCount > 0 ? lawnMonthly / uniqueClientCount : 0;
 
   const SortHeader = ({ field, align, children }) => (
     <th
@@ -241,8 +240,8 @@ export function RecurringClientsReport() {
           <p className="text-3xl font-black text-brand-text mt-2">{uniqueClientCount || '--'}</p>
         </div>
         <div className="bg-card rounded-2xl border border-border-subtle p-5">
-          <p className="text-[10px] text-muted font-bold uppercase tracking-wider">Monthly Revenue</p>
-          <p className="text-3xl font-black text-primary mt-2">{totalMonthly > 0 ? money(totalMonthly) : '--'}</p>
+          <p className="text-[10px] text-muted font-bold uppercase tracking-wider">Monthly Lawn Revenue</p>
+          <p className="text-3xl font-black text-primary mt-2">{lawnMonthly > 0 ? money(lawnMonthly) : '--'}</p>
         </div>
         <div className="bg-card rounded-2xl border border-border-subtle p-5">
           <p className="text-[10px] text-muted font-bold uppercase tracking-wider">Avg / Client</p>
