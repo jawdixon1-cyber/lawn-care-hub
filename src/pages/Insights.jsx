@@ -87,30 +87,23 @@ function loadColOrder() {
   return DEFAULT_COL_ORDER;
 }
 
-// Aggregate labor visits by Jobber jobId AND by client name. Both maps are
-// keyed for fast lookup; client-name fallback handles cases where a recurring
-// job was replaced in Jobber (new jobId) but visits accrued under the old one.
-const normName = (s) => (s || '').trim().toLowerCase();
+// Aggregate labor visits by Jobber jobId → { rev, labor, expenses, laborPct }
 function buildLaborByJob(daysObj) {
-  const byJob = {};
-  const byClient = {};
-  const accumulate = (bucket, key, v) => {
-    if (!bucket[key]) bucket[key] = { rev: 0, labor: 0, expenses: 0 };
-    bucket[key].rev += (v.rawJobTotal ?? v.jobTotal) || 0;
-    bucket[key].labor += v.labor?.totalCost || 0;
-    bucket[key].expenses += v.jobExpenses || 0;
-  };
+  const map = {};
   for (const day of Object.values(daysObj || {})) {
     for (const v of (day.visits || [])) {
-      if (v.jobId) accumulate(byJob, v.jobId, v);
-      const name = normName(v.client);
-      if (name) accumulate(byClient, name, v);
+      if (!v.jobId) continue;
+      if (!map[v.jobId]) map[v.jobId] = { rev: 0, labor: 0, expenses: 0 };
+      map[v.jobId].rev += (v.rawJobTotal ?? v.jobTotal) || 0;
+      map[v.jobId].labor += v.labor?.totalCost || 0;
+      map[v.jobId].expenses += v.jobExpenses || 0;
     }
   }
-  const finalize = (m) => { for (const id in m) { const e = m[id]; e.laborPct = e.rev > 0 ? (e.labor / e.rev) * 100 : null; } };
-  finalize(byJob);
-  finalize(byClient);
-  return { byJob, byClient };
+  for (const id in map) {
+    const m = map[id];
+    m.laborPct = m.rev > 0 ? (m.labor / m.rev) * 100 : null;
+  }
+  return map;
 }
 const REPORTS = [
   { id: 'clients', path: '/insights/clients', label: 'Recurring Clients', description: 'Full roster with frequency, service, dates, and revenue', icon: Users },
@@ -170,7 +163,7 @@ export function RecurringClientsReport() {
   const [showSettings, setShowSettings] = useState(false);
   const [dragIdx, setDragIdx] = useState(null);
   const [dropTarget, setDropTarget] = useState(null); // { idx, position: 'before' | 'after' }
-  const [laborByJob, setLaborByJob] = useState({ byJob: {}, byClient: {} });
+  const [laborByJob, setLaborByJob] = useState({});
   const [laborStatus, setLaborStatus] = useState('loading'); // loading | loaded | throttled | failed
   const [laborRetryAt, setLaborRetryAt] = useState(null);
   const [laborAttempts, setLaborAttempts] = useState(0);
@@ -259,14 +252,10 @@ export function RecurringClientsReport() {
   }, [laborStatus, laborRetryAt, fetchLabor]);
 
   // Enrich job rows with laborPct from the labor lookup.
-  // Try exact jobId match first; fall back to client-name aggregation when the
-  // recurring job was replaced in Jobber (new jobId, but visits under old one).
   const enrich = useCallback((rows) => {
     const isPending = laborStatus === 'loading' || laborStatus === 'throttled';
     return rows.map(r => {
-      const byJob = laborByJob.byJob?.[r.sourceId];
-      const byName = laborByJob.byClient?.[normName(r.name)];
-      const m = byJob || byName;
+      const m = laborByJob[r.sourceId];
       return {
         ...r,
         profitLoading: isPending && !m,
