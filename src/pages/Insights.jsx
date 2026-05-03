@@ -350,18 +350,6 @@ export function RecurringClientsReport() {
 
   const sumMonthly = (list) => list.reduce((s, j) => s + (j.monthly || 0), 0);
   const lawnMonthly = sumMonthly(lawnJobs);
-
-  // Labor-health distribution across all currently-active rated jobs.
-  // Excludes jobs without labor data (no completed visits in the window) so the
-  // percentages reflect actual evidence, not absence of evidence.
-  const laborHealth = useMemo(() => {
-    const all = [...enrich(lawnJobs), ...enrich(otherJobs)];
-    const rated = all.filter(j => j.laborPct != null);
-    const green = rated.filter(j => j.laborPct <= 25).length;
-    const amber = rated.filter(j => j.laborPct > 25 && j.laborPct <= 30).length;
-    const red = rated.filter(j => j.laborPct > 30).length;
-    return { green, amber, red, rated: rated.length, total: all.length };
-  }, [lawnJobs, otherJobs, enrich]);
   const otherMonthly = sumMonthly(otherJobs);
   const uniqueClientCount = activeClients.length;
   const avgMonthly = uniqueClientCount > 0 ? lawnMonthly / uniqueClientCount : 0;
@@ -448,39 +436,6 @@ export function RecurringClientsReport() {
           <p className="text-3xl font-black text-primary mt-2">{avgMonthly > 0 ? money(avgMonthly) : '--'}</p>
         </div>
       </div>
-
-      {laborHealth.rated > 0 && (() => {
-        const { green, amber, red, rated, total } = laborHealth;
-        const pctOf = (n) => (n / rated) * 100;
-        const fmtBucket = (n) => `${n} (${Math.round(pctOf(n))}%)`;
-        return (
-          <div className="bg-card rounded-2xl border border-border-subtle p-5">
-            <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-              <h2 className="text-sm font-bold text-primary">Labor Health</h2>
-              <span className="text-xs text-muted">{rated} of {total} rated · {total - rated} unrated</span>
-            </div>
-            <div className="flex h-3 rounded-full overflow-hidden bg-surface-alt">
-              {green > 0 && <div style={{ width: `${pctOf(green)}%` }} className="bg-emerald-500" title={`Healthy ≤25%: ${green}`} />}
-              {amber > 0 && <div style={{ width: `${pctOf(amber)}%` }} className="bg-amber-400" title={`Watch 26-30%: ${amber}`} />}
-              {red > 0 && <div style={{ width: `${pctOf(red)}%` }} className="bg-red-500" title={`Unprofitable >30%: ${red}`} />}
-            </div>
-            <div className="grid grid-cols-3 gap-3 mt-3 text-xs">
-              <div className="flex items-center gap-2">
-                <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" />
-                <span className="text-secondary"><span className="font-semibold text-primary">{fmtBucket(green)}</span> ≤25%</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-2.5 h-2.5 rounded-full bg-amber-400 shrink-0" />
-                <span className="text-secondary"><span className="font-semibold text-primary">{fmtBucket(amber)}</span> 26-30%</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-2.5 h-2.5 rounded-full bg-red-500 shrink-0" />
-                <span className="text-secondary"><span className="font-semibold text-primary">{fmtBucket(red)}</span> &gt;30%</span>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
 
       {(laborStatus === 'throttled' || laborStatus === 'giveup' || laborStatus === 'failed') && (
         <div className={`rounded-xl px-4 py-2 text-xs flex items-center justify-between gap-3 border
