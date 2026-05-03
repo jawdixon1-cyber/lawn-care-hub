@@ -492,10 +492,10 @@ export default function Schedule() {
   // Read visits from hub_visits (canonical schema, source-agnostic).
   // The sync layer keeps these tables fresh from Jobber. UI never calls Jobber directly.
   const jobberRangeKey = `${currentDate.getFullYear()}-${currentDate.getMonth()}`;
-  const loadJobberMonth = useCallback(async () => {
+  const loadJobberMonth = useCallback(async ({ silent = false } = {}) => {
     const start = new Date(currentDate.getFullYear(), currentDate.getMonth(), -6);
     const end = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 7);
-    setJobberLoading(true);
+    if (!silent) setJobberLoading(true);
     try {
       const { data, error } = await supabase
         .from('hub_visits')
@@ -529,7 +529,7 @@ export default function Schedule() {
     } catch (err) {
       setJobberError(err.message);
     } finally {
-      setJobberLoading(false);
+      if (!silent) setJobberLoading(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jobberRangeKey]);
@@ -546,16 +546,24 @@ export default function Schedule() {
 
   useEffect(() => {
     loadJobberMonth();
+    // Debounce realtime triggers — a single Jobber edit often fires multiple
+    // postgres_changes events (visit row + assignments). Coalesce into one reload.
+    let debounce;
+    const triggerSilentReload = () => {
+      clearTimeout(debounce);
+      debounce = setTimeout(() => loadJobberMonth({ silent: true }), 600);
+    };
     // Supabase realtime: when hub_visits or hub_visit_assignments change (webhook
     // from Jobber, manual edit, etc.), re-load instantly instead of polling.
     const channel = supabase
       .channel('schedule-hub-visits')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'hub_visits' }, () => loadJobberMonth())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'hub_visit_assignments' }, () => loadJobberMonth())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'hub_visits' }, triggerSilentReload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'hub_visit_assignments' }, triggerSilentReload)
       .subscribe();
     // Safety-net polling at 5 min in case the realtime channel drops.
-    const id = setInterval(loadJobberMonth, 300_000);
+    const id = setInterval(() => loadJobberMonth({ silent: true }), 300_000);
     return () => {
+      clearTimeout(debounce);
       clearInterval(id);
       supabase.removeChannel(channel);
     };
