@@ -154,22 +154,29 @@ export function PdfAgreementUploader({ current, onUploaded, onClose }) {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState(null);
   const [whatsNew, setWhatsNew] = useState('');
+  const [stagedFile, setStagedFile] = useState(null);
   const fileRef = useRef(null);
 
-  const handleFile = async (file) => {
+  const stageFile = (file) => {
     if (!file) return;
     if (!/\.pdf$/i.test(file.name)) { setError('PDF files only'); return; }
     if (file.size > 10 * 1024 * 1024) { setError('Max 10 MB'); return; }
+    setError(null);
+    setStagedFile(file);
+  };
+
+  const handlePublish = async () => {
+    if (!stagedFile) { setError('Add a PDF first'); return; }
     setError(null); setUploading(true);
     try {
-      const urlRes = await fetch(`/api/messaging?action=get-upload-url&bucket=agreements&filename=${encodeURIComponent(file.name)}`);
+      const urlRes = await fetch(`/api/messaging?action=get-upload-url&bucket=agreements&filename=${encodeURIComponent(stagedFile.name)}`);
       const urlData = await urlRes.json();
       if (!urlRes.ok) throw new Error(urlData.error || 'Upload URL failed');
-      const putRes = await fetch(urlData.signedUrl, { method: 'PUT', headers: { 'Content-Type': 'application/pdf' }, body: file });
+      const putRes = await fetch(urlData.signedUrl, { method: 'PUT', headers: { 'Content-Type': 'application/pdf' }, body: stagedFile });
       if (!putRes.ok) throw new Error('Upload failed');
       const next = {
         url: urlData.publicUrl,
-        fileName: file.name,
+        fileName: stagedFile.name,
         version: (current?.version ? parseFloat(current.version) + 0.1 : 1).toFixed(1),
         uploadedAt: new Date().toISOString(),
         whatsNew: whatsNew.trim() || null,
@@ -185,8 +192,10 @@ export function PdfAgreementUploader({ current, onUploaded, onClose }) {
   const onDrop = useCallback((e) => {
     e.preventDefault();
     const f = e.dataTransfer.files?.[0];
-    if (f) handleFile(f);
-  }, [whatsNew]);
+    if (f) stageFile(f);
+  }, []);
+
+  const formatSize = (bytes) => bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(0)} KB` : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 
   return (
     <div className="space-y-3">
@@ -202,25 +211,52 @@ export function PdfAgreementUploader({ current, onUploaded, onClose }) {
           className="w-full bg-surface-alt rounded-lg px-3 py-2 text-sm text-primary placeholder:text-muted focus:outline-none focus:ring-1 focus:ring-brand resize-none"
         />
       </div>
-      <div
-        onDragOver={(e) => e.preventDefault()}
-        onDrop={onDrop}
-        onClick={() => fileRef.current?.click()}
-        className="rounded-xl border-2 border-dashed border-border-default bg-surface-alt/40 hover:bg-surface-alt hover:border-brand transition-colors p-8 text-center cursor-pointer"
+
+      {stagedFile ? (
+        <div className="rounded-xl border border-border-subtle bg-surface-alt/40 p-3 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <FileText size={16} className="text-brand shrink-0" />
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-primary truncate">{stagedFile.name}</p>
+              <p className="text-[11px] text-muted">{formatSize(stagedFile.size)} · ready to publish</p>
+            </div>
+          </div>
+          <button
+            onClick={() => setStagedFile(null)}
+            disabled={uploading}
+            className="text-[11px] font-bold text-muted hover:text-red-500 cursor-pointer shrink-0 disabled:opacity-50"
+          >
+            Remove
+          </button>
+        </div>
+      ) : (
+        <div
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={onDrop}
+          onClick={() => fileRef.current?.click()}
+          className="rounded-xl border-2 border-dashed border-border-default bg-surface-alt/40 hover:bg-surface-alt hover:border-brand transition-colors p-8 text-center cursor-pointer"
+        >
+          <Upload size={20} className="text-muted mx-auto mb-2" />
+          <p className="text-sm font-bold text-primary">Drop a PDF here or click to select</p>
+          <p className="text-[11px] text-muted mt-1">Max 10 MB. Replaces the current agreement for everyone.</p>
+          <input ref={fileRef} type="file" accept="application/pdf" className="hidden"
+            onChange={(e) => stageFile(e.target.files?.[0])} />
+        </div>
+      )}
+
+      {error && <p className="text-xs text-red-400">{error}</p>}
+
+      <button
+        onClick={handlePublish}
+        disabled={!stagedFile || uploading}
+        className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-brand text-on-brand text-sm font-bold hover:bg-brand-hover cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
       >
         {uploading ? (
-          <div className="inline-flex items-center gap-2 text-muted"><Loader2 size={16} className="animate-spin" /> Uploading…</div>
+          <><Loader2 size={14} className="animate-spin" /> Publishing…</>
         ) : (
-          <>
-            <Upload size={20} className="text-muted mx-auto mb-2" />
-            <p className="text-sm font-bold text-primary">Drop a PDF here or click to upload</p>
-            <p className="text-[11px] text-muted mt-1">Max 10 MB. Replaces the current agreement for everyone.</p>
-          </>
+          <><Check size={14} /> Publish new version</>
         )}
-        <input ref={fileRef} type="file" accept="application/pdf" className="hidden"
-          onChange={(e) => handleFile(e.target.files?.[0])} />
-      </div>
-      {error && <p className="text-xs text-red-400">{error}</p>}
+      </button>
     </div>
   );
 }
