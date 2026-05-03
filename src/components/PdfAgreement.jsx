@@ -153,6 +153,7 @@ export default function PdfAgreementSigningFlow({ pdf, onClose, onComplete, memb
 export function PdfAgreementUploader({ current, onUploaded, onClose }) {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState(null);
+  const [whatsNew, setWhatsNew] = useState('');
   const fileRef = useRef(null);
 
   const handleFile = async (file) => {
@@ -171,6 +172,7 @@ export function PdfAgreementUploader({ current, onUploaded, onClose }) {
         fileName: file.name,
         version: (current?.version ? parseFloat(current.version) + 0.1 : 1).toFixed(1),
         uploadedAt: new Date().toISOString(),
+        whatsNew: whatsNew.trim() || null,
       };
       onUploaded(next);
     } catch (err) {
@@ -184,10 +186,22 @@ export function PdfAgreementUploader({ current, onUploaded, onClose }) {
     e.preventDefault();
     const f = e.dataTransfer.files?.[0];
     if (f) handleFile(f);
-  }, []);
+  }, [whatsNew]);
 
   return (
     <div className="space-y-3">
+      <div>
+        <label className="block text-[10px] font-bold uppercase tracking-wider text-muted mb-1">
+          What's new in this version <span className="text-muted/60 normal-case font-normal">(optional, shown to team)</span>
+        </label>
+        <textarea
+          value={whatsNew}
+          onChange={(e) => setWhatsNew(e.target.value)}
+          placeholder={'e.g. "Added new uniform policy in section 3" or "Updated PTO rules"'}
+          rows={3}
+          className="w-full bg-surface-alt rounded-lg px-3 py-2 text-sm text-primary placeholder:text-muted focus:outline-none focus:ring-1 focus:ring-brand resize-none"
+        />
+      </div>
       <div
         onDragOver={(e) => e.preventDefault()}
         onDrop={onDrop}

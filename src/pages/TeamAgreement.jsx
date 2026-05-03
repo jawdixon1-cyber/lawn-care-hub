@@ -1140,6 +1140,13 @@ function OwnerPdfAgreementView() {
         </div>
       )}
 
+      {agreementPdf?.whatsNew && !showUpload && (
+        <div className="rounded-xl border border-brand/30 bg-brand/5 p-3">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-brand mb-1">What's new in v{currentVersion}</p>
+          <p className="text-xs text-secondary whitespace-pre-wrap">{agreementPdf.whatsNew}</p>
+        </div>
+      )}
+
       {agreementPdf && !showUpload && <PdfAgreementView pdf={agreementPdf} height={600} />}
     </div>
   );
@@ -1275,6 +1282,14 @@ function TeamMemberPdfAgreementView() {
           </span>
         )}
       </div>
+
+      {needsSign && agreementPdf.whatsNew && (
+        <div className="rounded-xl border border-brand/40 bg-brand/10 p-4">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-brand mb-1.5">What's new in v{agreementPdf.version}</p>
+          <p className="text-sm text-primary whitespace-pre-wrap">{agreementPdf.whatsNew}</p>
+          <p className="text-[11px] text-muted mt-2">Read the full agreement below before signing.</p>
+        </div>
+      )}
 
       <PdfAgreementView pdf={agreementPdf} height={620} />
 

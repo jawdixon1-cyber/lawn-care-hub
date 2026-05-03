@@ -257,7 +257,16 @@ export default function Finance() {
       {error && (
         <div className="mb-4 flex items-center gap-2 px-4 py-3 rounded-xl bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 text-sm">
           <AlertCircle size={16} />
-          {error}
+          <span className="flex-1">{error}</span>
+          {/Token refresh failed|reconnect QuickBooks|not connected/i.test(error) && (
+            <a
+              href="/api/qb-data?action=auth"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#2ca01c] text-white font-semibold hover:bg-[#238a17] transition-colors text-xs whitespace-nowrap"
+            >
+              <Link2 size={14} />
+              Reconnect QuickBooks
+            </a>
+          )}
         </div>
       )}
 

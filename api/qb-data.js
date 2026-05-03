@@ -13,37 +13,57 @@ async function getTokens(supabase) {
   return data?.value || null;
 }
 
+// In-memory single-flight lock — dedupe concurrent refresh attempts within a single process.
+// Without this, parallel API calls (e.g. dashboard fires 3 at once) race to refresh; the first
+// rotates the refresh_token at QB, and the others send the now-dead token and get invalid_grant.
+let refreshInFlight = null;
+
 async function refreshIfNeeded(supabase, tokens) {
   // Refresh if token expires within 5 minutes
   if (tokens.expires_at > Date.now() + 5 * 60 * 1000) return tokens;
 
-  const clientId = process.env.QB_CLIENT_ID;
-  const clientSecret = process.env.QB_CLIENT_SECRET;
+  if (refreshInFlight) return refreshInFlight;
 
-  const res = await fetch('https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-      Authorization: `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`,
-    },
-    body: new URLSearchParams({
-      grant_type: 'refresh_token',
-      refresh_token: tokens.refresh_token,
-    }),
+  refreshInFlight = (async () => {
+    const clientId = (process.env.QB_CLIENT_ID || '').trim();
+    const clientSecret = (process.env.QB_CLIENT_SECRET || '').trim();
+
+    const res = await fetch('https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Accept: 'application/json',
+        Authorization: `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`,
+      },
+      body: new URLSearchParams({
+        grant_type: 'refresh_token',
+        refresh_token: tokens.refresh_token,
+      }),
+    });
+
+    if (!res.ok) {
+      const body = await res.text();
+      console.error(`[qb-refresh] failed status=${res.status} body=${body}`);
+      throw new Error(`QB refresh failed (${res.status}): ${body.slice(0, 200)}`);
+    }
+
+    const newTokens = await res.json();
+    const updated = {
+      ...tokens,
+      access_token: newTokens.access_token,
+      refresh_token: newTokens.refresh_token,
+      expires_at: Date.now() + newTokens.expires_in * 1000,
+      refresh_expires_at: Date.now() + (newTokens.x_refresh_token_expires_in || 8726400) * 1000,
+    };
+
+    await supabase.from('app_state').upsert({ key: 'qb-tokens', value: updated }, { onConflict: 'key' });
+    console.log(`[qb-refresh] ok, next expires in ${newTokens.expires_in}s, refresh window ${newTokens.x_refresh_token_expires_in}s`);
+    return updated;
+  })().finally(() => {
+    refreshInFlight = null;
   });
 
-  if (!res.ok) throw new Error('Token refresh failed');
-
-  const newTokens = await res.json();
-  const updated = {
-    ...tokens,
-    access_token: newTokens.access_token,
-    refresh_token: newTokens.refresh_token,
-    expires_at: Date.now() + newTokens.expires_in * 1000,
-  };
-
-  await supabase.from('app_state').upsert({ key: 'qb-tokens', value: updated }, { onConflict: 'key' });
-  return updated;
+  return refreshInFlight;
 }
 
 async function qbFetch(tokens, endpoint) {
@@ -138,8 +158,8 @@ export default async function handler(req, res) {
 
   try {
     tokens = await refreshIfNeeded(supabase, tokens);
-  } catch {
-    return res.status(401).json({ error: 'Token refresh failed — reconnect QuickBooks' });
+  } catch (err) {
+    return res.status(401).json({ error: 'Token refresh failed — reconnect QuickBooks', detail: err.message });
   }
 
   try {
