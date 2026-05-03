@@ -610,25 +610,41 @@ async function loadLaborGrouped({ start, end, skipLineItems = true, skipJobExpen
   return grouped;
 }
 
-// Aggregate the per-day grouped labor data into per-jobId totals + Labor %.
+// Aggregate the per-day grouped labor data into per-jobId totals + Labor %,
+// plus a per-visit breakdown for the drill-down view.
 // Used by the cron + recurring-summary endpoint.
 function buildLaborAggregates(grouped) {
   const byJob = {};
-  for (const day of Object.values(grouped || {})) {
+  const r2 = (n) => Math.round((n || 0) * 100) / 100;
+  for (const [date, day] of Object.entries(grouped || {})) {
     for (const v of (day.visits || [])) {
       if (!v.jobId) continue;
-      if (!byJob[v.jobId]) byJob[v.jobId] = { rev: 0, labor: 0, hours: 0 };
-      byJob[v.jobId].rev += (v.rawJobTotal ?? v.jobTotal) || 0;
-      byJob[v.jobId].labor += v.labor?.totalCost || 0;
-      byJob[v.jobId].hours += v.labor?.totalHours || 0;
+      if (!byJob[v.jobId]) byJob[v.jobId] = { rev: 0, labor: 0, hours: 0, visits: [] };
+      const visitRev = (v.rawJobTotal ?? v.jobTotal) || 0;
+      const visitLabor = v.labor?.totalCost || 0;
+      const visitHours = v.labor?.totalHours || 0;
+      byJob[v.jobId].rev += visitRev;
+      byJob[v.jobId].labor += visitLabor;
+      byJob[v.jobId].hours += visitHours;
+      byJob[v.jobId].visits.push({
+        date,
+        rev: r2(visitRev),
+        labor: r2(visitLabor),
+        hours: r2(visitHours),
+        laborPct: visitRev > 0 ? Math.round((visitLabor / visitRev) * 100) / 1 : null,
+        byPerson: Object.entries(v.labor?.byPerson || {})
+          .map(([name, p]) => ({ name, hours: r2(p.hours), cost: r2(p.cost) }))
+          .sort((a, b) => b.hours - a.hours),
+      });
     }
   }
   for (const id in byJob) {
     const m = byJob[id];
     m.laborPct = m.rev > 0 ? (m.labor / m.rev) * 100 : null;
-    m.rev = Math.round(m.rev * 100) / 100;
-    m.labor = Math.round(m.labor * 100) / 100;
-    m.hours = Math.round(m.hours * 100) / 100;
+    m.rev = r2(m.rev);
+    m.labor = r2(m.labor);
+    m.hours = r2(m.hours);
+    m.visits.sort((a, b) => b.date.localeCompare(a.date)); // newest first
   }
   return byJob;
 }
@@ -1095,6 +1111,7 @@ async function handleRecurringSummary(req, res) {
         laborCost: labor?.labor ?? null,
         laborHours: labor?.hours ?? null,
         laborRevenue: labor?.rev ?? null,
+        laborVisits: labor?.visits || [],
       };
 
       if (ended) endedJobs.push(row);

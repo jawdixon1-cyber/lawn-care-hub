@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, lazy, Suspense } from 'react';
+import { useState, useEffect, useMemo, useCallback, lazy, Suspense, Fragment } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowUpDown, RefreshCw, Users, TrendingUp, MapPinned, ChevronLeft, ChevronRight, Settings, X, GripVertical } from 'lucide-react';
 
@@ -11,6 +11,15 @@ const fmtDate = (iso) => {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return null;
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+};
+const fmtHrs = (h) => {
+  if (h == null || isNaN(h)) return '—';
+  const total = Math.round(h * 60);
+  const hr = Math.floor(total / 60);
+  const m = total % 60;
+  if (hr === 0) return `${m}m`;
+  if (m === 0) return `${hr}h`;
+  return `${hr}h ${m}m`;
 };
 
 const pct = (v) => v == null || isNaN(v) ? '—' : `${Math.round(v)}%`;
@@ -144,6 +153,7 @@ export function RecurringClientsReport() {
   const [dragIdx, setDragIdx] = useState(null);
   const [dropTarget, setDropTarget] = useState(null); // { idx, position: 'before' | 'after' }
   const [laborMeta, setLaborMeta] = useState(null);
+  const [expandedKey, setExpandedKey] = useState(null);
 
   useEffect(() => {
     try { localStorage.setItem(COL_ORDER_KEY, JSON.stringify(colOrder)); } catch { /* ignore */ }
@@ -286,38 +296,101 @@ export function RecurringClientsReport() {
     </th>
   );
 
-  const JobsTable = ({ rows, dim }) => (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="text-[11px] text-muted uppercase tracking-wide">
-            <th className="pb-2 pr-3 text-left">#</th>
-            {colOrder.map(id => {
-              const def = COL_DEFS[id];
-              return def.sortField
-                ? <SortHeader key={id} field={def.sortField} align={def.align}>{def.label}</SortHeader>
-                : <th key={id} className={`pb-2 pr-3 ${def.align === 'right' ? 'text-right' : 'text-left'}`}>{def.label}</th>;
-            })}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((j, i) => (
-            <tr key={`${j.contactId}-${j.title}-${i}`} className={`border-t border-border-subtle/50 align-top ${dim ? 'text-muted' : ''}`}>
-              <td className="py-3 pr-3 text-muted text-xs">{i + 1}</td>
+  const JobsTable = ({ rows, dim }) => {
+    const colSpan = colOrder.length + 1; // +1 for the # column
+    return (
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-[11px] text-muted uppercase tracking-wide">
+              <th className="pb-2 pr-3 text-left">#</th>
               {colOrder.map(id => {
                 const def = COL_DEFS[id];
-                return (
-                  <td key={id} className={`py-3 pr-3 ${def.align === 'right' ? 'text-right' : ''}`}>
-                    {def.cell(j, dim)}
-                  </td>
-                );
+                return def.sortField
+                  ? <SortHeader key={id} field={def.sortField} align={def.align}>{def.label}</SortHeader>
+                  : <th key={id} className={`pb-2 pr-3 ${def.align === 'right' ? 'text-right' : 'text-left'}`}>{def.label}</th>;
               })}
             </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
+          </thead>
+          <tbody>
+            {rows.map((j, i) => {
+              const rowKey = `${j.contactId}-${j.title}-${i}`;
+              const isOpen = expandedKey === rowKey;
+              return (
+                <Fragment key={rowKey}>
+                  <tr
+                    onClick={() => setExpandedKey(isOpen ? null : rowKey)}
+                    className={`border-t border-border-subtle/50 align-top cursor-pointer hover:bg-surface-alt/40 ${dim ? 'text-muted' : ''} ${isOpen ? 'bg-surface-alt/30' : ''}`}
+                  >
+                    <td className="py-3 pr-3 text-muted text-xs">{i + 1}</td>
+                    {colOrder.map(id => {
+                      const def = COL_DEFS[id];
+                      return (
+                        <td key={id} className={`py-3 pr-3 ${def.align === 'right' ? 'text-right' : ''}`}>
+                          {def.cell(j, dim)}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                  {isOpen && (
+                    <tr className="bg-surface-alt/40">
+                      <td colSpan={colSpan} className="px-3 py-4">
+                        <VisitDetail visits={j.laborVisits || []} />
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
+
+  const VisitDetail = ({ visits }) => {
+    if (!visits.length) {
+      return <p className="text-xs text-muted italic">No completed visits in the last 90 days.</p>;
+    }
+    return (
+      <div className="space-y-3">
+        <p className="text-[10px] font-bold text-muted uppercase tracking-wider">Visits in last 90 days</p>
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-[10px] text-muted uppercase tracking-wider">
+              <th className="text-left pb-2 pr-3">Date</th>
+              <th className="text-right pb-2 pr-3">Time</th>
+              <th className="text-right pb-2 pr-3">Revenue</th>
+              <th className="text-right pb-2 pr-3">Labor</th>
+              <th className="text-right pb-2">Labor %</th>
+            </tr>
+          </thead>
+          <tbody>
+            {visits.map((v, vi) => (
+              <Fragment key={vi}>
+                <tr className="border-t border-border-subtle/50">
+                  <td className="py-2 pr-3 text-secondary font-medium whitespace-nowrap">{fmtDate(v.date)}</td>
+                  <td className="py-2 pr-3 text-right text-secondary">{fmtHrs(v.hours)}</td>
+                  <td className="py-2 pr-3 text-right text-secondary">{money(v.rev)}</td>
+                  <td className="py-2 pr-3 text-right text-secondary">{money(v.labor)}</td>
+                  <td className={`py-2 text-right font-semibold ${laborTone(v.laborPct)}`}>{v.laborPct == null ? '—' : pct(v.laborPct)}</td>
+                </tr>
+                {(v.byPerson || []).map((p, pi) => (
+                  <tr key={pi} className="text-muted">
+                    <td className="py-1 pr-3 pl-4">↳ {p.name}</td>
+                    <td className="py-1 pr-3 text-right">{fmtHrs(p.hours)}</td>
+                    <td></td>
+                    <td className="py-1 pr-3 text-right">{money(p.cost)}</td>
+                    <td></td>
+                  </tr>
+                ))}
+              </Fragment>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-6 space-y-6">
