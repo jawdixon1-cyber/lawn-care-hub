@@ -546,8 +546,19 @@ export default function Schedule() {
 
   useEffect(() => {
     loadJobberMonth();
-    const id = setInterval(loadJobberMonth, 60_000);
-    return () => clearInterval(id);
+    // Supabase realtime: when hub_visits or hub_visit_assignments change (webhook
+    // from Jobber, manual edit, etc.), re-load instantly instead of polling.
+    const channel = supabase
+      .channel('schedule-hub-visits')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'hub_visits' }, () => loadJobberMonth())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'hub_visit_assignments' }, () => loadJobberMonth())
+      .subscribe();
+    // Safety-net polling at 5 min in case the realtime channel drops.
+    const id = setInterval(loadJobberMonth, 300_000);
+    return () => {
+      clearInterval(id);
+      supabase.removeChannel(channel);
+    };
   }, [loadJobberMonth]);
 
   // Kick off a background sync once per app load (and on month change).
