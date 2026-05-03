@@ -4,7 +4,7 @@
 // Window is intentionally narrow — webhooks cover the rest.
 
 import { getSupabaseAdmin } from '../../lib/supabaseAdmin.js';
-import { syncJobberVisits } from '../jobber-data.js';
+import { syncJobberVisits, refreshLaborAggregates } from '../jobber-data.js';
 import { JobberDisconnectedError } from '../../lib/jobberClient.js';
 
 export default async function handler(req, res) {
@@ -15,17 +15,26 @@ export default async function handler(req, res) {
 
   const supabase = getSupabaseAdmin();
   const startedAt = Date.now();
+  const out = {};
   try {
     // Tight window — webhooks handle real-time, this just catches stragglers.
-    const result = await syncJobberVisits(supabase, 7, 14);
-    const ms = Date.now() - startedAt;
-    console.log(`[Cron] Jobber sync: ${result.visits} visits, ${result.jobs} jobs, ${result.pages} pages, ${ms}ms`);
-    return res.json({ ok: true, ...result, durationMs: ms });
+    out.visits = await syncJobberVisits(supabase, 7, 14);
   } catch (err) {
-    console.error('[Cron] Jobber sync failed:', err.message);
+    console.error('[Cron] visit sync failed:', err.message);
     if (err instanceof JobberDisconnectedError || err.code === 'JOBBER_DISCONNECTED') {
       return res.status(200).json({ ok: false, error: 'jobber disconnected', skip: true });
     }
     return res.status(500).json({ ok: false, error: err.message });
   }
+  // Labor aggregates refresh — keeps Recurring Clients page Labor % current.
+  // Failures here don't block the visit sync result.
+  try {
+    out.labor = await refreshLaborAggregates(supabase, 90);
+  } catch (err) {
+    console.warn('[Cron] labor aggregate refresh failed:', err.message);
+    out.labor = { error: err.message, code: err.code };
+  }
+  const ms = Date.now() - startedAt;
+  console.log(`[Cron] Jobber sync done in ${ms}ms`, out);
+  return res.json({ ok: true, ...out, durationMs: ms });
 }

@@ -1,7 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, lazy, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowUpDown, RefreshCw, Users, TrendingUp, MapPinned, ChevronLeft, ChevronRight, Settings, X, GripVertical } from 'lucide-react';
-import { getTodayInTimezone } from '../utils/timezone';
 
 const ClientMapInner = lazy(() => import('../components/ClientMapInner'));
 
@@ -66,7 +65,6 @@ const COL_DEFS = {
   laborPct: {
     label: 'Labor %', sortField: 'laborPct', align: 'right',
     cell: (j) => {
-      if (j.profitLoading) return <span className="text-muted text-xs">…</span>;
       if (j.laborPct == null) return <span className="text-muted">—</span>;
       return <span className={`font-semibold ${laborTone(j.laborPct)}`}>{pct(j.laborPct)}</span>;
     },
@@ -87,24 +85,6 @@ function loadColOrder() {
   return DEFAULT_COL_ORDER;
 }
 
-// Aggregate labor visits by Jobber jobId → { rev, labor, expenses, laborPct }
-function buildLaborByJob(daysObj) {
-  const map = {};
-  for (const day of Object.values(daysObj || {})) {
-    for (const v of (day.visits || [])) {
-      if (!v.jobId) continue;
-      if (!map[v.jobId]) map[v.jobId] = { rev: 0, labor: 0, expenses: 0 };
-      map[v.jobId].rev += (v.rawJobTotal ?? v.jobTotal) || 0;
-      map[v.jobId].labor += v.labor?.totalCost || 0;
-      map[v.jobId].expenses += v.jobExpenses || 0;
-    }
-  }
-  for (const id in map) {
-    const m = map[id];
-    m.laborPct = m.rev > 0 ? (m.labor / m.rev) * 100 : null;
-  }
-  return map;
-}
 const REPORTS = [
   { id: 'clients', path: '/insights/clients', label: 'Recurring Clients', description: 'Full roster with frequency, service, dates, and revenue', icon: Users },
   { id: 'leads', path: '/insights/leads', label: 'Leads', description: 'Where your requests come from and how sources perform', icon: MapPinned },
@@ -163,10 +143,7 @@ export function RecurringClientsReport() {
   const [showSettings, setShowSettings] = useState(false);
   const [dragIdx, setDragIdx] = useState(null);
   const [dropTarget, setDropTarget] = useState(null); // { idx, position: 'before' | 'after' }
-  const [laborByJob, setLaborByJob] = useState({});
-  const [laborStatus, setLaborStatus] = useState('loading'); // loading | loaded | throttled | failed
-  const [laborRetryAt, setLaborRetryAt] = useState(null);
-  const [laborAttempts, setLaborAttempts] = useState(0);
+  const [laborMeta, setLaborMeta] = useState(null);
 
   useEffect(() => {
     try { localStorage.setItem(COL_ORDER_KEY, JSON.stringify(colOrder)); } catch { /* ignore */ }
@@ -197,82 +174,13 @@ export function RecurringClientsReport() {
         setOtherJobs(d?.otherJobs || []);
         setEndedJobs(d?.endedJobs || []);
         setActiveClients(d?.recurringClientList || []);
+        setLaborMeta(d?.labor || null);
       })
       .catch(err => setError(err.message || 'Failed to load'))
       .finally(() => setLoading(false));
   }, []);
 
   useEffect(() => { load(); }, [load]);
-
-  // Profitability per job: parallel-fetch labor data for last 90 days, aggregate by Jobber jobId.
-  // Backoff schedule: 90s, 180s, 360s, then give up. Manual Retry button always works.
-  const RETRY_DELAYS = [90000, 180000, 360000];
-  const fetchLabor = useCallback(async (manual = false) => {
-    const today = getTodayInTimezone();
-    const start = new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10);
-    setLaborStatus('loading');
-    setLaborRetryAt(null);
-    if (manual) setLaborAttempts(0);
-    try {
-      const r = await fetch(`/api/jobber-data?action=labor&start=${start}&end=${today}&skipLineItems=1&skipJobExpenses=1`);
-      const body = await r.json();
-      if (!r.ok || body?.error) {
-        if (r.status === 429 || body?.code === 'THROTTLED') {
-          setLaborAttempts(prev => {
-            const next = prev + 1;
-            const delay = RETRY_DELAYS[prev];
-            if (delay) {
-              setLaborStatus('throttled');
-              setLaborRetryAt(Date.now() + delay);
-            } else {
-              setLaborStatus('giveup');
-            }
-            return next;
-          });
-          return;
-        }
-        throw new Error(body?.error || `HTTP ${r.status}`);
-      }
-      setLaborByJob(buildLaborByJob(body));
-      setLaborStatus('loaded');
-      setLaborAttempts(0);
-    } catch {
-      setLaborStatus('failed');
-    }
-  }, []);
-
-  useEffect(() => { fetchLabor(true); }, [fetchLabor]);
-
-  // Auto-retry after throttle clears (until we run out of retries)
-  useEffect(() => {
-    if (laborStatus !== 'throttled' || !laborRetryAt) return;
-    const ms = Math.max(0, laborRetryAt - Date.now());
-    const t = setTimeout(() => fetchLabor(), ms);
-    return () => clearTimeout(t);
-  }, [laborStatus, laborRetryAt, fetchLabor]);
-
-  // Enrich job rows with laborPct from the labor lookup.
-  const enrich = useCallback((rows) => {
-    const isPending = laborStatus === 'loading' || laborStatus === 'throttled';
-    return rows.map(r => {
-      const m = laborByJob[r.sourceId];
-      return {
-        ...r,
-        profitLoading: isPending && !m,
-        laborPct: m?.laborPct ?? null,
-      };
-    });
-  }, [laborByJob, laborStatus]);
-
-  const labelForLaborStatus = () => {
-    if (laborStatus === 'throttled') {
-      const waitSec = laborRetryAt ? Math.max(0, Math.round((laborRetryAt - Date.now()) / 1000)) : null;
-      return waitSec ? `Profit data: Jobber rate-limited us. Retrying in ~${waitSec}s.` : 'Profit data: Jobber rate-limited us. Retrying…';
-    }
-    if (laborStatus === 'giveup') return 'Profit data: Jobber rate-limited too many times. Hit Retry when ready.';
-    if (laborStatus === 'failed') return 'Profit data failed to load.';
-    return null;
-  };
 
   // Pull geocoded client coords from the dominate endpoint (same Jobber data, already geocoded server-side)
   useEffect(() => {
@@ -335,9 +243,9 @@ export function RecurringClientsReport() {
     return out;
   }, [sortKey, sortDir]);
 
-  const sortedLawn = useMemo(() => sortFn(filterFn(enrich(lawnJobs))), [lawnJobs, enrich, filterFn, sortFn]);
-  const sortedOther = useMemo(() => sortFn(filterFn(enrich(otherJobs))), [otherJobs, enrich, filterFn, sortFn]);
-  const sortedEnded = useMemo(() => sortFn(filterFn(enrich(endedJobs))), [endedJobs, enrich, filterFn, sortFn]);
+  const sortedLawn = useMemo(() => sortFn(filterFn(lawnJobs)), [lawnJobs, filterFn, sortFn]);
+  const sortedOther = useMemo(() => sortFn(filterFn(otherJobs)), [otherJobs, filterFn, sortFn]);
+  const sortedEnded = useMemo(() => sortFn(filterFn(endedJobs)), [endedJobs, filterFn, sortFn]);
 
   const toggleSort = (key) => {
     if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -354,13 +262,13 @@ export function RecurringClientsReport() {
   // Labor-health distribution across all currently-active rated jobs.
   // Excludes jobs without labor data so percentages reflect actual evidence.
   const laborHealth = useMemo(() => {
-    const all = [...enrich(lawnJobs), ...enrich(otherJobs)];
+    const all = [...lawnJobs, ...otherJobs];
     const rated = all.filter(j => j.laborPct != null);
     const green = rated.filter(j => j.laborPct <= 25).length;
     const amber = rated.filter(j => j.laborPct > 25 && j.laborPct <= 30).length;
     const red = rated.filter(j => j.laborPct > 30).length;
     return { green, amber, red, rated: rated.length, total: all.length };
-  }, [lawnJobs, otherJobs, enrich]);
+  }, [lawnJobs, otherJobs]);
 
   const otherMonthly = sumMonthly(otherJobs);
   const uniqueClientCount = activeClients.length;
@@ -482,16 +390,11 @@ export function RecurringClientsReport() {
         );
       })()}
 
-      {(laborStatus === 'throttled' || laborStatus === 'giveup' || laborStatus === 'failed') && (
-        <div className={`rounded-xl px-4 py-2 text-xs flex items-center justify-between gap-3 border
-          ${laborStatus === 'throttled'
-            ? 'bg-amber-500/10 border-amber-500/40 text-amber-300'
-            : 'bg-red-500/10 border-red-500/40 text-red-300'}`}>
-          <span>{labelForLaborStatus()}</span>
-          {laborStatus !== 'throttled' && (
-            <button onClick={() => fetchLabor(true)} className="font-semibold underline cursor-pointer">Retry</button>
-          )}
-        </div>
+      {laborMeta?.updatedAt && (
+        <p className="text-[10px] text-muted text-right -mt-3">
+          Labor data updated {new Date(laborMeta.updatedAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+          {laborMeta.window?.sinceDays ? ` · ${laborMeta.window.sinceDays}-day window` : ''}
+        </p>
       )}
 
       <div className="flex items-center gap-3">

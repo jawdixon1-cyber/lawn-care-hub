@@ -17,6 +17,7 @@ import messagingHandler from './api/messaging.js';
 import teamAuthHandler from './lib/teamAuth.js';
 import ghlHandler from './lib/ghlHandler.js';
 import requestWebhook from './api/webhooks/request.js';
+import cronSyncJobber from './api/cron/sync-jobber.js';
 
 config({ path: '.env.local' });
 
@@ -57,6 +58,9 @@ app.all('/api/ghl', ghlHandler);
 
 // Webhook: request intake from website forms
 app.post('/api/webhooks/request', requestWebhook);
+
+// Cron jobs (Vercel hits these on a schedule; expose locally for manual trigger)
+app.all('/api/cron/sync-jobber', cronSyncJobber);
 
 // Backwards compat routes (Express 5: req.query is read-only, so redirect instead)
 app.get('/api/jobber-clients', (req, res) => res.redirect(`/api/jobber-data?action=clients&${new URL(req.url, 'http://x').search.slice(1)}`));

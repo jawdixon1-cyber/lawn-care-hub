@@ -249,21 +249,32 @@ async function fetchVisitLineItemsTotal(visitId) {
   }
 }
 
+// Thin HTTP wrapper. Real work in loadLaborGrouped() so cron + recurring-summary
+// can call into it directly without going through HTTP.
 async function handleLaborData(req, res) {
   const { start, end } = req.query;
   if (!start || !end) return res.status(400).json({ error: 'start and end required' });
-  // Skip per-visit line item calls — callers who only need job-level totals can set this
-  // to avoid Jobber's per-visit rate limit. Saves N API calls where N = visit count.
-  const skipLineItems = req.query.skipLineItems === '1';
-  // Skip the per-job expenses catch-up loop (edge-case expenses outside window). Saves N calls.
-  const skipJobExpenses = req.query.skipJobExpenses === '1';
+  try {
+    const data = await loadLaborGrouped({
+      start, end,
+      skipLineItems: req.query.skipLineItems === '1',
+      skipJobExpenses: req.query.skipJobExpenses === '1',
+      forceRefresh: req.query.refresh === '1',
+    });
+    return res.json(data);
+  } catch (err) {
+    if (err.code === 'THROTTLED') return res.status(429).json({ error: err.message, code: 'THROTTLED' });
+    if (err.code === 'JOBBER_DISCONNECTED') return res.status(401).json({ error: err.message, code: 'JOBBER_DISCONNECTED' });
+    return res.status(500).json({ error: err.message });
+  }
+}
 
+async function loadLaborGrouped({ start, end, skipLineItems = true, skipJobExpenses = true, forceRefresh = false } = {}) {
   const cacheKey = `${start}|${end}|${skipLineItems ? 'nopv' : 'full'}|${skipJobExpenses ? 'noje' : 'je'}`;
-  const forceRefresh = req.query.refresh === '1';
   let cached = laborCache[cacheKey];
-  if (!cached) cached = await loadPersistedLabor(cacheKey); // hydrate from Supabase on cold start
+  if (!cached) cached = await loadPersistedLabor(cacheKey);
   if (cached && !forceRefresh && Date.now() - cached.time < LABOR_CACHE_TTL) {
-    return res.json(cached.data);
+    return cached.data;
   }
 
   let visits, timesheets, expenses;
@@ -278,15 +289,13 @@ async function handleLaborData(req, res) {
     // Serve stale (up to 24h) if we have it — beats showing "rate limited" forever.
     if (cached && Date.now() - cached.time < LABOR_STALE_OK_TTL) {
       console.log(`[Labor] Serving stale cache (age ${Math.round((Date.now() - cached.time) / 60000)}m)`);
-      return res.json(cached.data);
+      return cached.data;
     }
     if (err.message?.includes('Throttled')) {
-      return res.status(429).json({ error: 'Jobber needs a moment — tap refresh.', code: 'THROTTLED' });
+      throw Object.assign(new Error('Jobber needs a moment — tap refresh.'), { code: 'THROTTLED' });
     }
-    if (err.code === 'JOBBER_DISCONNECTED') {
-      return res.status(401).json({ error: err.message, code: 'JOBBER_DISCONNECTED' });
-    }
-    return res.status(500).json({ error: err.message });
+    if (err.code === 'JOBBER_DISCONNECTED') throw err;
+    throw err;
   }
 
   const grouped = {};
@@ -598,7 +607,56 @@ async function handleLaborData(req, res) {
   }
   laborCache[cacheKey] = { data: grouped, time: Date.now() };
   persistLabor(cacheKey, laborCache[cacheKey]).catch(() => {}); // fire-and-forget
-  return res.json(grouped);
+  return grouped;
+}
+
+// Aggregate the per-day grouped labor data into per-jobId totals + Labor %.
+// Used by the cron + recurring-summary endpoint.
+function buildLaborAggregates(grouped) {
+  const byJob = {};
+  for (const day of Object.values(grouped || {})) {
+    for (const v of (day.visits || [])) {
+      if (!v.jobId) continue;
+      if (!byJob[v.jobId]) byJob[v.jobId] = { rev: 0, labor: 0, hours: 0 };
+      byJob[v.jobId].rev += (v.rawJobTotal ?? v.jobTotal) || 0;
+      byJob[v.jobId].labor += v.labor?.totalCost || 0;
+      byJob[v.jobId].hours += v.labor?.totalHours || 0;
+    }
+  }
+  for (const id in byJob) {
+    const m = byJob[id];
+    m.laborPct = m.rev > 0 ? (m.labor / m.rev) * 100 : null;
+    m.rev = Math.round(m.rev * 100) / 100;
+    m.labor = Math.round(m.labor * 100) / 100;
+    m.hours = Math.round(m.hours * 100) / 100;
+  }
+  return byJob;
+}
+
+// Refresh the rolling-90-day labor aggregates. Called by the cron so the
+// Recurring Clients page reads precomputed data instantly.
+export async function refreshLaborAggregates(supabase, sinceDays = 90) {
+  const today = new Date().toISOString().slice(0, 10);
+  const start = new Date(Date.now() - sinceDays * 86400000).toISOString().slice(0, 10);
+  const grouped = await loadLaborGrouped({ start, end: today, skipLineItems: true, skipJobExpenses: true });
+  const byJob = buildLaborAggregates(grouped);
+  // app_state has a NOT NULL org_id; reuse whichever one this hub is using.
+  const { data: existing } = await supabase.from('app_state')
+    .select('org_id').eq('key', 'labor-aggregates').maybeSingle();
+  let orgId = existing?.org_id;
+  if (!orgId) {
+    const { data: any } = await supabase.from('app_state').select('org_id').not('org_id', 'is', null).limit(1).maybeSingle();
+    orgId = any?.org_id;
+  }
+  const payload = {
+    key: 'labor-aggregates',
+    value: { byJob, window: { start, end: today, sinceDays }, updatedAt: new Date().toISOString() },
+    updated_at: new Date().toISOString(),
+  };
+  if (orgId) payload.org_id = orgId;
+  const { error: upsertErr } = await supabase.from('app_state').upsert(payload, { onConflict: 'key' });
+  if (upsertErr) throw new Error(`labor-aggregates upsert: ${upsertErr.message}`);
+  return { jobs: Object.keys(byJob).length, window: { start, end: today } };
 }
 
 // ── YTD Revenue from Completed Visits ──
@@ -976,17 +1034,21 @@ const isLawnTitle = (title) => !title || !title.trim() || LAWN_TITLE_RE.test(tit
 async function handleRecurringSummary(req, res) {
   try {
     const supabase = getSupabaseAdmin();
-    const { data: jobs, error } = await supabase
-      .from('hub_jobs')
-      .select(`
+    // Pull jobs + precomputed labor aggregates in parallel.
+    const [jobsResp, laborResp] = await Promise.all([
+      supabase.from('hub_jobs').select(`
         id, contact_id, title, status, source_id,
         total_amount, frequency_label, visits_per_month,
         start_date, end_date,
         contacts:contact_id ( id, name, phone, email, address_line1, address_city, address_state, address_zip )
-      `)
-      .eq('type', 'recurring')
-      .in('status', ['active', 'archived', 'completed']);
-    if (error) throw new Error(error.message);
+      `).eq('type', 'recurring').in('status', ['active', 'archived', 'completed']),
+      supabase.from('app_state').select('value').eq('key', 'labor-aggregates').maybeSingle(),
+    ]);
+    if (jobsResp.error) throw new Error(jobsResp.error.message);
+    const jobs = jobsResp.data || [];
+    const laborByJob = laborResp.data?.value?.byJob || {};
+    const laborWindow = laborResp.data?.value?.window || null;
+    const laborUpdatedAt = laborResp.data?.value?.updatedAt || null;
 
     const todayISO = new Date().toISOString().slice(0, 10);
     const isJobEnded = (j) => j.status !== 'active' || (j.end_date && j.end_date < todayISO);
@@ -1012,6 +1074,7 @@ async function handleRecurringSummary(req, res) {
         : (j.visits_per_month != null ? Number(j.visits_per_month) : null);
       const monthly = perVisit != null && visitsPerMonth ? perVisit * visitsPerMonth : null;
       const ended = isJobEnded(j);
+      const labor = laborByJob[j.source_id] || null;
 
       const row = {
         contactId: c.id,
@@ -1028,6 +1091,10 @@ async function handleRecurringSummary(req, res) {
         endDate: j.end_date,
         ended,
         category: isLawnTitle(j.title) ? 'lawn' : 'other',
+        laborPct: labor?.laborPct ?? null,
+        laborCost: labor?.labor ?? null,
+        laborHours: labor?.hours ?? null,
+        laborRevenue: labor?.rev ?? null,
       };
 
       if (ended) endedJobs.push(row);
@@ -1080,6 +1147,7 @@ async function handleRecurringSummary(req, res) {
       otherJobs,
       endedJobs,
       uniqueActiveClientCount,
+      labor: { window: laborWindow, updatedAt: laborUpdatedAt, jobsRated: Object.keys(laborByJob).length },
       // Backward-compat fields
       activeRecurringCount: uniqueActiveClientCount,
       activeRecurringJobs: lawnJobs.length + otherJobs.length,
