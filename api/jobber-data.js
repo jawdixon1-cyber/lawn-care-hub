@@ -108,7 +108,7 @@ async function fetchVisits(start, end) {
   while (hasNext) {
     if (page++ > 0) await new Promise(r => setTimeout(r, 1500));
     const after = cursor ? `, after: "${cursor}"` : '';
-    const data = await jobberQuery(`{ visits(first: 25${after}, filter: { startAt: { after: "${startISO}", before: "${endISO}" } }) { nodes { id title completedAt startAt endAt job { id jobNumber jobType jobStatus total client { firstName lastName } } } pageInfo { hasNextPage endCursor } } }`);
+    const data = await jobberQuery(`{ visits(first: 25${after}, filter: { completedAt: { after: "${startISO}", before: "${endISO}" } }) { nodes { id title completedAt startAt endAt job { id jobNumber jobType jobStatus total client { firstName lastName } } } pageInfo { hasNextPage endCursor } } }`);
     allVisits.push(...(data.visits?.nodes || []));
     hasNext = data.visits?.pageInfo?.hasNextPage || false;
     cursor = data.visits?.pageInfo?.endCursor || null;
@@ -258,9 +258,10 @@ async function handleLaborData(req, res) {
   const skipJobExpenses = req.query.skipJobExpenses === '1';
 
   const cacheKey = `${start}|${end}|${skipLineItems ? 'nopv' : 'full'}|${skipJobExpenses ? 'noje' : 'je'}`;
+  const forceRefresh = req.query.refresh === '1';
   let cached = laborCache[cacheKey];
   if (!cached) cached = await loadPersistedLabor(cacheKey); // hydrate from Supabase on cold start
-  if (cached && Date.now() - cached.time < LABOR_CACHE_TTL) {
+  if (cached && !forceRefresh && Date.now() - cached.time < LABOR_CACHE_TTL) {
     return res.json(cached.data);
   }
 
