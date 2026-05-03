@@ -133,7 +133,8 @@ async function fetchTimesheets(start, end) {
     all.push(...(data.timeSheetEntries?.nodes || []));
     hasNext = data.timeSheetEntries?.pageInfo?.hasNextPage || false;
     cursor = data.timeSheetEntries?.pageInfo?.endCursor || null;
-    if (all.length > 1000) break;
+    // Cap at 5000 — 1000 was too low for 90-day windows (1400+ entries common in season).
+    if (all.length > 5000) break;
   }
   return all;
 }
