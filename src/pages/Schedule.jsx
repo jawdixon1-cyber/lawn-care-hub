@@ -723,9 +723,6 @@ export default function Schedule() {
       {showNewEvent && <NewEventModal onClose={() => setShowNewEvent(null)} onSave={createEvent} defaultDate={showNewEvent} orgId={orgId} />}
       {selectedItem && <EventDetail item={selectedItem} onClose={() => setSelectedItem(null)} onStatusChange={updateStatus} onUpdateAssigned={updateAssigned} />}
 
-      {/* Jobber sync status — quiet indicator, the visits themselves render on the calendar */}
-      <JobberSyncIndicator loading={jobberLoading} stale={jobberStale} error={jobberError} count={jobberVisits.length} onRefresh={triggerSync} />
-
       {/* Header — Jobber style */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
