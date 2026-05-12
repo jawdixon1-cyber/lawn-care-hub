@@ -710,6 +710,87 @@ async function handleYTDRevenue(req, res) {
 const todayVisitsCache = new Map(); // date -> { data, time }
 const TODAY_VISITS_TTL = 60 * 1000;
 
+// Open quotes / new requests — daily-focus overlays for the Plan panel.
+// Cached for 2 min since these change far less often than visits.
+let openQuotesCache = null; // { data, time }
+let newRequestsCache = null;
+const OPEN_QUOTES_TTL = 2 * 60 * 1000;
+const NEW_REQUESTS_TTL = 2 * 60 * 1000;
+
+async function handleOpenQuotes(req, res) {
+  if (openQuotesCache && Date.now() - openQuotesCache.time < OPEN_QUOTES_TTL) {
+    return res.json({ quotes: openQuotesCache.data, cached: true });
+  }
+  try {
+    // Fetch the most recent 50 quotes; filter open ones in JS.
+    // Open = needs your attention: draft, awaiting_response, or sent-but-not-acted-on.
+    const data = await jobberQuery(`{
+      quotes(first: 50) {
+        nodes {
+          id quoteNumber quoteStatus
+          amounts { total }
+          updatedAt sentAt
+          client { firstName lastName companyName }
+        }
+      }
+    }`);
+    const OPEN = new Set(['draft', 'awaiting_response']);
+    const quotes = (data.quotes?.nodes || [])
+      .filter((q) => OPEN.has((q.quoteStatus || '').toLowerCase()))
+      .map((q) => ({
+        id: q.id,
+        quoteNumber: q.quoteNumber,
+        status: q.quoteStatus,
+        total: q.amounts?.total || 0,
+        sentAt: q.sentAt,
+        updatedAt: q.updatedAt,
+        clientName: q.client?.companyName || `${q.client?.firstName || ''} ${q.client?.lastName || ''}`.trim() || 'Unknown',
+      }))
+      .sort((a, b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0));
+    openQuotesCache = { data: quotes, time: Date.now() };
+    return res.json({ quotes, cached: false });
+  } catch (err) {
+    console.error('[open-quotes]', err.message);
+    if (openQuotesCache) return res.json({ quotes: openQuotesCache.data, cached: true, stale: true });
+    if (err.code === 'JOBBER_DISCONNECTED') return res.status(401).json({ error: err.message, code: 'JOBBER_DISCONNECTED' });
+    return res.status(500).json({ error: err.message });
+  }
+}
+
+async function handleNewRequests(req, res) {
+  if (newRequestsCache && Date.now() - newRequestsCache.time < NEW_REQUESTS_TTL) {
+    return res.json({ requests: newRequestsCache.data, cached: true });
+  }
+  try {
+    const data = await jobberQuery(`{
+      requests(first: 50) {
+        nodes {
+          id requestStatus source createdAt
+          client { firstName lastName companyName }
+        }
+      }
+    }`);
+    const OPEN = new Set(['new', 'today', 'upcoming']);
+    const requests = (data.requests?.nodes || [])
+      .filter((r) => OPEN.has((r.requestStatus || '').toLowerCase()))
+      .map((r) => ({
+        id: r.id,
+        status: r.requestStatus,
+        source: r.source,
+        createdAt: r.createdAt,
+        clientName: r.client?.companyName || `${r.client?.firstName || ''} ${r.client?.lastName || ''}`.trim() || 'Unknown',
+      }))
+      .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+    newRequestsCache = { data: requests, time: Date.now() };
+    return res.json({ requests, cached: false });
+  } catch (err) {
+    console.error('[new-requests]', err.message);
+    if (newRequestsCache) return res.json({ requests: newRequestsCache.data, cached: true, stale: true });
+    if (err.code === 'JOBBER_DISCONNECTED') return res.status(401).json({ error: err.message, code: 'JOBBER_DISCONNECTED' });
+    return res.status(500).json({ error: err.message });
+  }
+}
+
 async function handleTodayVisits(req, res) {
   const today = req.query.date || new Date().toISOString().split('T')[0];
   const cached = todayVisitsCache.get(today);
@@ -721,31 +802,40 @@ async function handleTodayVisits(req, res) {
     const endPlusOne = new Date(today + 'T00:00:00');
     endPlusOne.setDate(endPlusOne.getDate() + 1);
     const endISO = endPlusOne.toISOString();
+    // Cost-conscious: dropped property{address} and job.client (2-3x cost each).
+    // Kept assignedUsers since the planner needs "who's it assigned to".
     const data = await jobberQuery(`{
-      visits(first: 100, filter: { startAt: { after: "${startISO}", before: "${endISO}" } }) {
+      visits(first: 25, filter: { startAt: { after: "${startISO}", before: "${endISO}" } }) {
         nodes {
           id title startAt endAt completedAt
-          property { address { street1 city province postalCode } }
-          job {
-            id jobNumber jobType jobStatus
-            client { firstName lastName }
-          }
+          job { id jobNumber }
           assignedUsers { nodes { id name { full } } }
         }
       }
     }`);
-    const visits = (data.visits?.nodes || []).map((v) => ({
+    // Local-date guard: Jobber's filter on startAt is inclusive of the upper bound,
+    // so a visit at *exactly* tomorrow 00:00 local can leak into today. Re-check
+    // each result's local date matches the requested day, and dedupe by id.
+    const seen = new Set();
+    const visits = (data.visits?.nodes || []).filter((v) => {
+      if (!v.startAt) return false;
+      if (seen.has(v.id)) return false;
+      seen.add(v.id);
+      const dt = new Date(v.startAt);
+      const localISO = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+      return localISO === today;
+    }).map((v) => ({
       id: v.id,
       title: v.title || '',
       startAt: v.startAt,
       endAt: v.endAt,
       completedAt: v.completedAt,
       jobNumber: v.job?.jobNumber || null,
-      jobType: v.job?.jobType || null,
-      jobStatus: v.job?.jobStatus || null,
-      clientName: v.job?.client ? `${v.job.client.firstName || ''} ${v.job.client.lastName || ''}`.trim() : 'Unknown',
-      address: v.property?.address ? [v.property.address.street1, v.property.address.city, v.property.address.province].filter(Boolean).join(', ') : '',
-      assignees: (v.assignedUsers?.nodes || []).map((u) => u.name?.full || u.id).filter(Boolean),
+      jobType: null,
+      jobStatus: null,
+      clientName: v.title || 'Visit',
+      address: '',
+      assignees: (v.assignedUsers?.nodes || []).map((u) => u.name?.full || '').filter(Boolean),
     })).sort((a, b) => new Date(a.startAt || 0) - new Date(b.startAt || 0));
     todayVisitsCache.set(today, { data: visits, time: Date.now() });
     return res.json({ visits, cached: false });
@@ -1226,6 +1316,8 @@ export default async function handler(req, res) {
     if (action === 'all-clients') return handleAllClients(req, res);
     if (action === 'labor') return handleLaborData(req, res);
     if (action === 'today-visits') return handleTodayVisits(req, res);
+    if (action === 'open-quotes') return handleOpenQuotes(req, res);
+    if (action === 'new-requests') return handleNewRequests(req, res);
     if (action === 'month-visits') return handleMonthVisits(req, res);
     if (action === 'hub-sync') return handleHubSync(req, res);
     if (action === 'ytd-revenue') return handleYTDRevenue(req, res);

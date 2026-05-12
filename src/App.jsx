@@ -56,6 +56,7 @@ const MileageLog = lazy(() => import('./pages/MileageLog'));
 const ChecklistTrackerPage = lazy(() => import('./pages/ChecklistTrackerPage'));
 const Quoting = lazy(() => import('./pages/Quoting'));
 const DailyChecklist = lazy(() => import('./pages/DailyChecklist'));
+const OwnerHome = lazy(() => import('./pages/OwnerHome'));
 const ExecutionDashboard = lazy(() => import('./pages/ExecutionDashboard'));
 const ReceiptTracker = lazy(() => import('./pages/ReceiptTracker'));
 const PlaybookDetail = lazy(() => import('./pages/PlaybookDetail'));
@@ -87,7 +88,6 @@ const InsightsProfitability = lazy(() => import('./pages/InsightsProfitability')
 
 const NAV_ITEMS = [
   { id: 'home', path: '/', label: 'Home', icon: HomeIcon },
-  { id: 'schedule', path: '/schedule', label: 'Schedule', icon: CalendarDays, ownerOnly: true },
 ];
 
 const TEAM_TOOLS_ITEMS = [
@@ -102,6 +102,8 @@ const TEAM_ITEMS = [
 ];
 
 const OPERATIONS_ITEMS = [
+  { id: 'schedule', path: '/schedule', label: 'Schedule', icon: CalendarDays },
+  { id: 'messaging', path: '/messages', label: 'Messaging', icon: MessageSquare },
   { id: 'clients', path: '/clients', label: 'Clients', icon: Users },
   { id: 'requests', path: '/requests', label: 'Requests', icon: Inbox },
   { id: 'sales', path: '/sales', label: 'Quotes', icon: Crosshair },
@@ -114,7 +116,6 @@ const OWNER_TOOLS_ITEMS = [
   { id: 'guides', path: '/guides', label: 'Playbooks', icon: BookOpen },
   { id: 'hiring', path: '/hiring', label: 'Hiring', icon: UserPlus2 },
   { id: 'insights', path: '/insights', label: 'Insights', icon: BarChart3 },
-  { id: 'messaging', path: '/messages', label: 'Messaging', icon: MessageSquare },
   { id: 'equipment', path: '/equipment', label: 'Equipment', icon: Wrench },
   { id: 'receipts', path: '/receipts', label: 'Receipts', icon: Receipt },
   { id: 'mileage', path: '/mileage', label: 'Mileage', icon: Gauge },
@@ -136,6 +137,11 @@ const CRITICAL_KEYS = [
   'greenteam-roles',
   'greenteam-announcements',
   'greenteam-applicationForm',
+  'greenteam-teamChecklist',
+  'greenteam-teamEndChecklist',
+  'greenteam-ownerStartChecklist',
+  'greenteam-ownerEndChecklist',
+  'greenteam-ownerTodos',
 ];
 
 function App() {
@@ -844,7 +850,7 @@ function AppShell() {
             </div>
           }>
               <Routes>
-                <Route path="/" element={ownerMode ? <DailyChecklist /> : <Home />} />
+                <Route path="/" element={ownerMode ? <OwnerHome /> : <Home />} />
                 <Route path="/guides" element={<HowToGuides ownerMode={ownerMode} allowedPlaybooks={allowedPlaybooks} />} />
                 <Route path="/guides/:id" element={<PlaybookDetail ownerMode={ownerMode} />} />
                 <Route path="/p/:slug" element={<PlaybookDetail ownerMode={ownerMode} />} />
