@@ -35,6 +35,12 @@ import {
   Hammer,
   UserPlus2,
   BarChart3,
+  Clock,
+  Eye,
+  Sunrise,
+  Sunset,
+  Printer,
+  DoorOpen,
 } from 'lucide-react';
 
 import { supabase } from './lib/supabase';
@@ -57,6 +63,11 @@ const ChecklistTrackerPage = lazy(() => import('./pages/ChecklistTrackerPage'));
 const Quoting = lazy(() => import('./pages/Quoting'));
 const DailyChecklist = lazy(() => import('./pages/DailyChecklist'));
 const OwnerHome = lazy(() => import('./pages/OwnerHome'));
+const ChecklistItem = lazy(() => import('./pages/ChecklistItem'));
+const ChecklistWorkflow = lazy(() => import('./pages/ChecklistWorkflow'));
+const Timesheets = lazy(() => import('./pages/Timesheets'));
+const Eyeballs = lazy(() => import('./pages/Eyeballs'));
+const PrintHangers = lazy(() => import('./pages/PrintHangers'));
 const ExecutionDashboard = lazy(() => import('./pages/ExecutionDashboard'));
 const ReceiptTracker = lazy(() => import('./pages/ReceiptTracker'));
 const PlaybookDetail = lazy(() => import('./pages/PlaybookDetail'));
@@ -91,7 +102,7 @@ const NAV_ITEMS = [
 ];
 
 const TEAM_TOOLS_ITEMS = [
-  { id: 'guides-field', path: '/guides?role=field', label: 'Playbooks', icon: BookOpen },
+  { id: 'guides-field', path: '/playbooks?role=field', label: 'Playbooks', icon: BookOpen },
   { id: 'equipment', path: '/equipment', label: 'Equipment', icon: Wrench },
   { id: 'receipts', path: '/receipts', label: 'Receipts', icon: Receipt },
   { id: 'mileage', path: '/mileage', label: 'Mileage', icon: Gauge },
@@ -112,14 +123,19 @@ const OPERATIONS_ITEMS = [
   { id: 'payments', path: '/payments', label: 'Payments', icon: CreditCard },
 ];
 
-const OWNER_TOOLS_ITEMS = [
-  { id: 'guides', path: '/guides', label: 'Playbooks', icon: BookOpen },
+const OWNER_TOOLS_PINNED = [
+  { id: 'guides', path: '/playbooks', label: 'Playbooks', icon: BookOpen },
   { id: 'hiring', path: '/hiring', label: 'Hiring', icon: UserPlus2 },
   { id: 'insights', path: '/insights', label: 'Insights', icon: BarChart3 },
+  { id: 'eyeballs', path: '/eyeballs', label: 'Eyeballs', icon: Eye },
+];
+const OWNER_TOOLS_MORE = [
   { id: 'equipment', path: '/equipment', label: 'Equipment', icon: Wrench },
   { id: 'receipts', path: '/receipts', label: 'Receipts', icon: Receipt },
   { id: 'mileage', path: '/mileage', label: 'Mileage', icon: Gauge },
+  { id: 'timesheets', path: '/timesheets', label: 'Timesheets', icon: Clock },
 ];
+const OWNER_TOOLS_ITEMS = [...OWNER_TOOLS_PINNED, ...OWNER_TOOLS_MORE];
 
 
 /* ─── App (outer) — auth gate + data loading ─── */
@@ -142,6 +158,9 @@ const CRITICAL_KEYS = [
   'greenteam-ownerStartChecklist',
   'greenteam-ownerEndChecklist',
   'greenteam-ownerTodos',
+  'greenteam-mileageLog',
+  'greenteam-vehicles',
+  'greenteam-guides',
 ];
 
 function App() {
@@ -497,6 +516,20 @@ function AppShell() {
   }, [ownerMode]);
 
   const permissions = useAppStore((s) => s.permissions);
+  const ownerStartChecklist = useAppStore((s) => s.ownerStartChecklist) || [];
+  const ownerEndChecklist = useAppStore((s) => s.ownerEndChecklist) || [];
+  const dailyProgress = (() => {
+    const DAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][new Date().getDay()];
+    const isForToday = (i) => i.type !== 'header' && (!i.days || i.days.length === 0 || i.days.includes(DAY));
+    const startToday = ownerStartChecklist.filter(isForToday);
+    const endToday = ownerEndChecklist.filter(isForToday);
+    return {
+      startDone: startToday.filter((i) => i.done).length,
+      startTotal: startToday.length,
+      endDone: endToday.filter((i) => i.done).length,
+      endTotal: endToday.length,
+    };
+  })();
   const userEmail = user?.email?.toLowerCase();
   const allowedPlaybooks = ownerMode
     ? ['service', 'sales', 'strategy']
@@ -572,6 +605,7 @@ function AppShell() {
   });
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [teamToolsOpen, setTeamToolsOpen] = useState(true);
+  const [ownerMoreOpen, setOwnerMoreOpen] = useState(false);
   const [operationsOpen, setOperationsOpen] = useState(false);
 
   const toggleSidebar = () => {
@@ -649,32 +683,28 @@ function AppShell() {
       {ownerMode && (
         <>
           <div className="h-px bg-border-subtle my-3 mx-2" />
-          {!collapsed && (
-            <button onClick={() => setOperationsOpen((o) => !o)}
-              className="w-full flex items-center justify-between px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted hover:text-secondary cursor-pointer">
-              <span>Building</span>
-              <ChevronDown size={14} className={`transition-transform ${operationsOpen ? 'rotate-180' : ''}`} />
-            </button>
-          )}
-          {(operationsOpen || collapsed) && (
-            <CreateButton collapsed={collapsed} onNav={handleNav} />
-          )}
-          {(operationsOpen || collapsed) && OPERATIONS_ITEMS.map((item) => {
+          {!collapsed && <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted">Daily</p>}
+          {[
+            { id: 'sod', path: '/workflow/start', label: 'Start of Day', icon: Sunrise, done: dailyProgress.startDone, total: dailyProgress.startTotal },
+            { id: 'eod', path: '/workflow/end',   label: 'End of Day',   icon: Sunset,  done: dailyProgress.endDone,   total: dailyProgress.endTotal   },
+          ].map((item) => {
             const Icon = item.icon;
             const active = isActive(item.path);
+            const allDone = item.total > 0 && item.done === item.total;
             return (
-              <button
-                key={item.id}
-                onClick={() => handleNav(item.path)}
-                title={collapsed ? item.label : undefined}
-                className={`w-full flex items-center gap-3 ${collapsed ? 'justify-center px-2' : 'px-3 pl-6'} py-2.5 rounded-xl text-sm font-medium transition-colors ${
-                  active
-                    ? 'bg-brand-light text-brand-text-strong'
-                    : 'text-secondary hover:bg-surface-alt hover:text-primary cursor-pointer'
-                }`}
-              >
-                <Icon size={18} className="shrink-0" />
-                {!collapsed && <span className="truncate">{item.label}</span>}
+              <button key={item.id} onClick={() => handleNav(item.path)} title={collapsed ? `${item.label} ${item.done}/${item.total}` : undefined}
+                className={`w-full flex items-center gap-3 ${collapsed ? 'justify-center px-2' : 'px-3'} py-2.5 rounded-xl text-sm font-medium transition-colors ${
+                  active ? 'bg-brand-light text-brand-text-strong' : 'text-secondary hover:bg-surface-alt hover:text-primary cursor-pointer'
+                }`}>
+                <Icon size={20} className="shrink-0" />
+                {!collapsed && (
+                  <>
+                    <span className="truncate flex-1 text-left">{item.label}</span>
+                    <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${allDone ? 'bg-emerald-100 text-emerald-700' : 'bg-surface-alt text-tertiary'}`}>
+                      {item.done}/{item.total}
+                    </span>
+                  </>
+                )}
               </button>
             );
           })}
@@ -687,7 +717,49 @@ function AppShell() {
               <ChevronDown size={14} className={`transition-transform ${teamToolsOpen ? 'rotate-180' : ''}`} />
             </button>
           )}
-          {(teamToolsOpen || collapsed) && OWNER_TOOLS_ITEMS.map((item) => {
+          {(teamToolsOpen || collapsed) && OWNER_TOOLS_PINNED.map((item) => {
+            const Icon = item.icon;
+            const active = isActive(item.path);
+            return (
+              <button key={item.id} onClick={() => handleNav(item.path)} title={collapsed ? item.label : undefined}
+                className={`w-full flex items-center gap-3 ${collapsed ? 'justify-center px-2' : 'px-3 pl-6'} py-2.5 rounded-xl text-sm font-medium transition-colors ${
+                  active ? 'bg-brand-light text-brand-text-strong' : 'text-secondary hover:bg-surface-alt hover:text-primary cursor-pointer'
+                }`}>
+                <Icon size={18} className="shrink-0" />
+                {!collapsed && <span className="truncate">{item.label}</span>}
+              </button>
+            );
+          })}
+
+          {(teamToolsOpen || collapsed) && !collapsed && (
+            <button onClick={() => setOwnerMoreOpen((o) => !o)}
+              className="w-full flex items-center justify-between px-3 pl-6 py-2 mt-1 text-xs font-semibold text-muted hover:text-secondary cursor-pointer">
+              <span className="inline-flex items-center gap-2">
+                <ChevronRight size={14} className={`transition-transform ${ownerMoreOpen ? 'rotate-90' : ''}`} />
+                More
+              </span>
+            </button>
+          )}
+          {(teamToolsOpen || collapsed) && (ownerMoreOpen || collapsed) && OWNER_TOOLS_MORE.map((item) => {
+            const Icon = item.icon;
+            const active = isActive(item.path);
+            return (
+              <button key={item.id} onClick={() => handleNav(item.path)} title={collapsed ? item.label : undefined}
+                className={`w-full flex items-center gap-3 ${collapsed ? 'justify-center px-2' : 'px-3 pl-10'} py-2.5 rounded-xl text-sm font-medium transition-colors ${
+                  active ? 'bg-brand-light text-brand-text-strong' : 'text-secondary hover:bg-surface-alt hover:text-primary cursor-pointer'
+                }`}>
+                <Icon size={18} className="shrink-0" />
+                {!collapsed && <span className="truncate">{item.label}</span>}
+              </button>
+            );
+          })}
+
+          {/* Print Marketing */}
+          <div className="h-px bg-border-subtle my-3 mx-2" />
+          {!collapsed && <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted inline-flex items-center gap-1.5"><Printer size={11} /> Print Marketing</p>}
+          {[
+            { id: 'hangers', path: '/print/hangers', label: 'Door Hangers', icon: DoorOpen },
+          ].map((item) => {
             const Icon = item.icon;
             const active = isActive(item.path);
             return (
@@ -728,7 +800,7 @@ function AppShell() {
       <aside className={`hidden lg:flex fixed left-0 top-0 h-full ${sidebarCollapsed ? 'w-16' : 'w-60'} bg-card border-r border-border-subtle z-40 flex-col transition-all duration-200`}>
         {/* Logo */}
         <div className={`h-16 flex items-center ${sidebarCollapsed ? 'justify-center px-2' : 'px-4'} border-b border-border-subtle shrink-0`}>
-          <img src={sidebarCollapsed ? 'https://assets.cdn.filesafe.space/Umlo2UnfqbijiGqNU6g2/media/697e5cbef7a8776caab6e3c7.png' : '/logo.png'} alt="Hey Jude's Lawn Care" className={`shrink-0 ${sidebarCollapsed ? 'h-10 w-10 object-contain' : 'h-10'}`} />
+          <img src={'https://assets.cdn.filesafe.space/Umlo2UnfqbijiGqNU6g2/media/6a0e4dbce304c4490f517e68.png'} alt="Hey Jude's Lawn Care" className={`shrink-0 ${sidebarCollapsed ? 'h-10 w-10 object-contain' : 'h-10'}`} />
         </div>
 
         {renderSidebarNav(sidebarCollapsed)}
@@ -807,7 +879,7 @@ function AppShell() {
             <X size={20} />
           </button>
           <div className="h-16 flex items-center px-4 border-b border-border-subtle shrink-0">
-            <img src="/logo.png" alt="Hey Jude's Lawn Care" className="h-10 shrink-0" />
+            <img src="https://assets.cdn.filesafe.space/Umlo2UnfqbijiGqNU6g2/media/6a0e4dbce304c4490f517e68.png" alt="Hey Jude's Lawn Care" className="h-10 shrink-0" />
           </div>
           {renderSidebarNav(false)}
           <div className="border-t border-border-subtle p-2 shrink-0">
@@ -851,8 +923,16 @@ function AppShell() {
           }>
               <Routes>
                 <Route path="/" element={ownerMode ? <OwnerHome /> : <Home />} />
-                <Route path="/guides" element={<HowToGuides ownerMode={ownerMode} allowedPlaybooks={allowedPlaybooks} />} />
-                <Route path="/guides/:id" element={<PlaybookDetail ownerMode={ownerMode} />} />
+                <Route path="/checklist/:kind/:itemId" element={<ChecklistItem />} />
+                <Route path="/workflow/:kind" element={<ChecklistWorkflow />} />
+                <Route path="/workflow/:kind/:stepIndex" element={<ChecklistWorkflow />} />
+                <Route path="/timesheets" element={<Timesheets />} />
+                <Route path="/eyeballs" element={<Eyeballs />} />
+                <Route path="/print/hangers" element={<PrintHangers />} />
+                <Route path="/playbooks" element={<HowToGuides ownerMode={ownerMode} allowedPlaybooks={allowedPlaybooks} />} />
+                <Route path="/playbooks/:id" element={<PlaybookDetail ownerMode={ownerMode} />} />
+                <Route path="/guides" element={<Navigate to="/playbooks" replace />} />
+                <Route path="/guides/:id" element={<HowToGuides ownerMode={ownerMode} allowedPlaybooks={allowedPlaybooks} />} />
                 <Route path="/p/:slug" element={<PlaybookDetail ownerMode={ownerMode} />} />
                 <Route path="/equipment" element={<EquipmentIdeas />} />
                 <Route path="/agreement" element={<TeamAgreement />} />

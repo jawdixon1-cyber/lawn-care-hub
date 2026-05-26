@@ -40,6 +40,6 @@
     }
   },
   "crons": [
-    { "path": "/api/cron/sync-jobber", "schedule": "0 * * * *" }
+    { "path": "/api/cron/sync-jobber", "schedule": "*/5 * * * *" }
   ]
 }

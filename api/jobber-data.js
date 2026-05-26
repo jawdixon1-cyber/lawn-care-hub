@@ -714,8 +714,14 @@ const TODAY_VISITS_TTL = 60 * 1000;
 // Cached for 2 min since these change far less often than visits.
 let openQuotesCache = null; // { data, time }
 let newRequestsCache = null;
+let requestsHistoryCache = null;
+let quotesHistoryCache = null;
+let bookedHistoryCache = null;
 const OPEN_QUOTES_TTL = 2 * 60 * 1000;
 const NEW_REQUESTS_TTL = 2 * 60 * 1000;
+const REQUESTS_HISTORY_TTL = 5 * 60 * 1000;
+const QUOTES_HISTORY_TTL = 5 * 60 * 1000;
+const BOOKED_HISTORY_TTL = 5 * 60 * 1000;
 
 async function handleOpenQuotes(req, res) {
   if (openQuotesCache && Date.now() - openQuotesCache.time < OPEN_QUOTES_TTL) {
@@ -787,6 +793,236 @@ async function handleNewRequests(req, res) {
     console.error('[new-requests]', err.message);
     if (newRequestsCache) return res.json({ requests: newRequestsCache.data, cached: true, stale: true });
     if (err.code === 'JOBBER_DISCONNECTED') return res.status(401).json({ error: err.message, code: 'JOBBER_DISCONNECTED' });
+    return res.status(500).json({ error: err.message });
+  }
+}
+
+// 12-week weekly histogram of requests created. Used by the Home page Requests card.
+async function handleRequestsHistory(req, res) {
+  if (requestsHistoryCache && Date.now() - requestsHistoryCache.time < REQUESTS_HISTORY_TTL) {
+    return res.json({ ...requestsHistoryCache.data, cached: true });
+  }
+  try {
+    // Paginate up to ~300 most-recent requests; 12 weeks at ~25/wk max is plenty.
+    const all = [];
+    let cursor = null;
+    for (let i = 0; i < 6; i++) {
+      const after = cursor ? `, after: "${cursor}"` : '';
+      const data = await jobberQuery(`{
+        requests(first: 50${after}) {
+          nodes {
+            id createdAt requestStatus source title
+            client { firstName lastName companyName }
+          }
+          pageInfo { hasNextPage endCursor }
+        }
+      }`);
+      const nodes = data.requests?.nodes || [];
+      all.push(...nodes);
+      const pi = data.requests?.pageInfo;
+      if (!pi?.hasNextPage) break;
+      cursor = pi.endCursor;
+    }
+
+    // Bucket into the last 12 ISO weeks (Mon-anchored), oldest → newest.
+    const now = new Date();
+    const startOfThisWeek = new Date(now);
+    const day = startOfThisWeek.getDay(); // 0=Sun
+    const diffToMon = (day === 0 ? -6 : 1 - day);
+    startOfThisWeek.setHours(0, 0, 0, 0);
+    startOfThisWeek.setDate(startOfThisWeek.getDate() + diffToMon);
+
+    const weeks = [];
+    for (let i = 11; i >= 0; i--) {
+      const start = new Date(startOfThisWeek);
+      start.setDate(start.getDate() - i * 7);
+      const end = new Date(start);
+      end.setDate(end.getDate() + 7);
+      weeks.push({ start, end, count: 0, items: [], label: `${start.getMonth() + 1}/${start.getDate()}` });
+    }
+
+    for (const r of all) {
+      if (!r.createdAt) continue;
+      const t = new Date(r.createdAt);
+      const clientName = r.client?.companyName
+        || [r.client?.firstName, r.client?.lastName].filter(Boolean).join(' ')
+        || 'Unknown';
+      for (const w of weeks) {
+        if (t >= w.start && t < w.end) {
+          w.count++;
+          w.items.push({ id: r.id, label: clientName, sub: r.title || r.requestStatus, when: r.createdAt });
+          break;
+        }
+      }
+    }
+
+    const payload = {
+      weeks: weeks.map((w) => ({ label: w.label, start: w.start.toISOString(), count: w.count, items: w.items })),
+      thisWeek: weeks[weeks.length - 1].count,
+      lastWeek: weeks[weeks.length - 2]?.count || 0,
+      total12w: weeks.reduce((s, w) => s + w.count, 0),
+    };
+    requestsHistoryCache = { data: payload, time: Date.now() };
+    return res.json({ ...payload, cached: false });
+  } catch (err) {
+    console.error('[requests-history]', err.message);
+    if (requestsHistoryCache) return res.json({ ...requestsHistoryCache.data, cached: true, stale: true });
+    if (err.code === 'JOBBER_DISCONNECTED') return res.status(401).json({ error: err.message, code: 'JOBBER_DISCONNECTED' });
+    return res.status(500).json({ error: err.message });
+  }
+}
+
+// 12-week histogram of quotes sent (and their total $).
+async function handleQuotesHistory(req, res) {
+  if (quotesHistoryCache && Date.now() - quotesHistoryCache.time < QUOTES_HISTORY_TTL) {
+    return res.json({ ...quotesHistoryCache.data, cached: true });
+  }
+  try {
+    const all = [];
+    let cursor = null;
+    for (let i = 0; i < 8; i++) {
+      const after = cursor ? `, after: "${cursor}"` : '';
+      const data = await jobberQuery(`{
+        quotes(first: 50${after}) {
+          nodes {
+            id createdAt sentAt quoteStatus quoteNumber amounts { total }
+            client { firstName lastName companyName }
+          }
+          pageInfo { hasNextPage endCursor }
+        }
+      }`);
+      const nodes = data.quotes?.nodes || [];
+      all.push(...nodes);
+      const pi = data.quotes?.pageInfo;
+      if (!pi?.hasNextPage) break;
+      cursor = pi.endCursor;
+    }
+
+    const now = new Date();
+    const startOfThisWeek = new Date(now);
+    const day = startOfThisWeek.getDay();
+    const diffToMon = (day === 0 ? -6 : 1 - day);
+    startOfThisWeek.setHours(0, 0, 0, 0);
+    startOfThisWeek.setDate(startOfThisWeek.getDate() + diffToMon);
+
+    const weeks = [];
+    for (let i = 11; i >= 0; i--) {
+      const start = new Date(startOfThisWeek);
+      start.setDate(start.getDate() - i * 7);
+      const end = new Date(start);
+      end.setDate(end.getDate() + 7);
+      weeks.push({ start, end, count: 0, amount: 0, items: [], label: `${start.getMonth() + 1}/${start.getDate()}` });
+    }
+
+    for (const q of all) {
+      const ts = q.sentAt || q.createdAt;
+      if (!ts) continue;
+      const t = new Date(ts);
+      const amt = Number(q.amounts?.total || 0);
+      const clientName = q.client?.companyName
+        || [q.client?.firstName, q.client?.lastName].filter(Boolean).join(' ')
+        || 'Unknown';
+      for (const w of weeks) {
+        if (t >= w.start && t < w.end) {
+          w.count++;
+          w.amount += amt;
+          w.items.push({ id: q.id, label: clientName, sub: q.quoteNumber ? `#${q.quoteNumber} · ${q.quoteStatus || ''}` : (q.quoteStatus || ''), amount: amt, when: ts });
+          break;
+        }
+      }
+    }
+
+    const payload = {
+      weeks: weeks.map((w) => ({ label: w.label, start: w.start.toISOString(), count: w.count, amount: Math.round(w.amount), items: w.items })),
+      thisWeek: weeks[weeks.length - 1].count,
+      lastWeek: weeks[weeks.length - 2]?.count || 0,
+      thisWeekAmount: Math.round(weeks[weeks.length - 1].amount),
+      total12w: weeks.reduce((s, w) => s + w.count, 0),
+      total12wAmount: Math.round(weeks.reduce((s, w) => s + w.amount, 0)),
+    };
+    quotesHistoryCache = { data: payload, time: Date.now() };
+    return res.json({ ...payload, cached: false });
+  } catch (err) {
+    console.error('[quotes-history]', err.message);
+    if (quotesHistoryCache) return res.json({ ...quotesHistoryCache.data, cached: true, stale: true });
+    if (err.code === 'JOBBER_DISCONNECTED') return res.status(401).json({ error: err.message, code: 'JOBBER_DISCONNECTED' });
+    return res.status(500).json({ error: err.message });
+  }
+}
+
+// 12-week histogram of recurring jobs booked (by start_date) — the "won deals" step of the funnel.
+async function handleBookedHistory(req, res) {
+  if (bookedHistoryCache && Date.now() - bookedHistoryCache.time < BOOKED_HISTORY_TTL) {
+    return res.json({ ...bookedHistoryCache.data, cached: true });
+  }
+  try {
+    const supabase = getSupabaseAdmin();
+    const now = new Date();
+    const startOfThisWeek = new Date(now);
+    const day = startOfThisWeek.getDay();
+    const diffToMon = (day === 0 ? -6 : 1 - day);
+    startOfThisWeek.setHours(0, 0, 0, 0);
+    startOfThisWeek.setDate(startOfThisWeek.getDate() + diffToMon);
+    const earliest = new Date(startOfThisWeek);
+    earliest.setDate(earliest.getDate() - 11 * 7);
+
+    // Pull EVERY recurring job ever (all statuses) so we can find each contact's
+    // first-ever recurring activity. A contact only counts as "new recurring"
+    // in a given week if their earliest recurring job (by created_at) was
+    // created in that week. start_date is irrelevant.
+    const { data: jobs, error } = await supabase
+      .from('hub_jobs')
+      .select('id, contact_id, created_at, total_amount, title, type, status, contacts:contact_id ( name )')
+      .eq('type', 'recurring');
+    if (error) throw new Error(error.message);
+
+    const firstByContact = new Map();
+    for (const j of jobs || []) {
+      if (!j.contact_id || !j.created_at) continue;
+      const existing = firstByContact.get(j.contact_id);
+      if (!existing || j.created_at < existing.created_at) {
+        firstByContact.set(j.contact_id, {
+          contact_id: j.contact_id,
+          created_at: j.created_at,
+          amount: Number(j.total_amount || 0),
+          title: j.title,
+          name: j.contacts?.name || 'Unknown',
+        });
+      }
+    }
+
+    const weeks = [];
+    for (let i = 11; i >= 0; i--) {
+      const start = new Date(startOfThisWeek);
+      start.setDate(start.getDate() - i * 7);
+      const end = new Date(start);
+      end.setDate(end.getDate() + 7);
+      weeks.push({ start, end, count: 0, amount: 0, items: [], label: `${start.getMonth() + 1}/${start.getDate()}` });
+    }
+    for (const rec of firstByContact.values()) {
+      const t = new Date(rec.created_at);
+      for (const w of weeks) {
+        if (t >= w.start && t < w.end) {
+          w.count++;
+          w.amount += rec.amount;
+          w.items.push({ id: rec.contact_id, label: rec.name, sub: rec.title || '', amount: rec.amount, when: rec.created_at });
+          break;
+        }
+      }
+    }
+
+    const payload = {
+      weeks: weeks.map((w) => ({ label: w.label, start: w.start.toISOString(), count: w.count, amount: Math.round(w.amount), items: w.items })),
+      thisWeek: weeks[weeks.length - 1].count,
+      lastWeek: weeks[weeks.length - 2]?.count || 0,
+      total12w: weeks.reduce((s, w) => s + w.count, 0),
+      total12wAmount: Math.round(weeks.reduce((s, w) => s + w.amount, 0)),
+    };
+    bookedHistoryCache = { data: payload, time: Date.now() };
+    return res.json({ ...payload, cached: false });
+  } catch (err) {
+    console.error('[booked-history]', err.message);
+    if (bookedHistoryCache) return res.json({ ...bookedHistoryCache.data, cached: true, stale: true });
     return res.status(500).json({ error: err.message });
   }
 }
@@ -1269,6 +1505,55 @@ async function handleRecurringSummary(req, res) {
   }
 }
 
+// One-shot: pull every job's true createdAt from Jobber and overwrite
+// hub_jobs.created_at so historical funnel charts read actual booking dates
+// instead of the day Hub first synced.
+async function handleBackfillJobDates(req, res) {
+  try {
+    const supabase = getSupabaseAdmin();
+    const all = [];
+    let cursor = null;
+    let pages = 0;
+    for (;;) {
+      const after = cursor ? `, after: "${cursor}"` : '';
+      const data = await jobberQuery(`{
+        jobs(first: 50${after}) {
+          nodes { id createdAt }
+          pageInfo { hasNextPage endCursor }
+        }
+      }`);
+      const nodes = data.jobs?.nodes || [];
+      all.push(...nodes);
+      pages++;
+      const pi = data.jobs?.pageInfo;
+      if (!pi?.hasNextPage) break;
+      cursor = pi.endCursor;
+      if (pages > 40) break; // safety: 2000 jobs max
+    }
+
+    let updated = 0;
+    let skipped = 0;
+    for (const j of all) {
+      if (!j.id || !j.createdAt) { skipped++; continue; }
+      const { data: rows, error } = await supabase
+        .from('hub_jobs')
+        .update({ created_at: j.createdAt })
+        .eq('source', 'jobber')
+        .eq('source_id', j.id)
+        .select('id');
+      if (error) { skipped++; continue; }
+      updated += (rows || []).length;
+    }
+
+    bookedHistoryCache = null; // invalidate so next /booked-history call re-buckets
+    return res.json({ ok: true, pages, jobsFetched: all.length, rowsUpdated: updated, rowsSkipped: skipped });
+  } catch (err) {
+    console.error('[backfill-job-dates]', err.message);
+    if (err.code === 'JOBBER_DISCONNECTED') return res.status(401).json({ error: err.message, code: 'JOBBER_DISCONNECTED' });
+    return res.status(500).json({ error: err.message });
+  }
+}
+
 async function handleHubSync(req, res) {
   const source = (req.query.source || 'jobber').toLowerCase();
   const entity = (req.query.entity || 'all').toLowerCase();
@@ -1318,6 +1603,10 @@ export default async function handler(req, res) {
     if (action === 'today-visits') return handleTodayVisits(req, res);
     if (action === 'open-quotes') return handleOpenQuotes(req, res);
     if (action === 'new-requests') return handleNewRequests(req, res);
+    if (action === 'requests-history') return handleRequestsHistory(req, res);
+    if (action === 'quotes-history') return handleQuotesHistory(req, res);
+    if (action === 'booked-history') return handleBookedHistory(req, res);
+    if (action === 'backfill-job-dates') return handleBackfillJobDates(req, res);
     if (action === 'month-visits') return handleMonthVisits(req, res);
     if (action === 'hub-sync') return handleHubSync(req, res);
     if (action === 'ytd-revenue') return handleYTDRevenue(req, res);

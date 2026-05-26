@@ -1,18 +1,15 @@
-import { useState, useRef, useEffect } from 'react';
-import { ArrowLeft, Plus, Trash2, GripVertical, ChevronUp, ChevronDown, ChevronRight, ChevronLeft, Truck, Calendar, ExternalLink, Link } from 'lucide-react';
+import { useState, useRef } from 'react';
+import { Link as RouterLink } from 'react-router-dom';
+import { ArrowLeft, Plus, Trash2, GripVertical, ChevronRight, Calendar, ChevronUp, ChevronDown, Cloud } from 'lucide-react';
 import { genId } from '../data';
 
 const ALL_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
-/* ─── Tap-to-edit text ─── */
-
+/* Tap-to-edit text */
 function EditableText({ value, onChange, className, inputClassName }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
   const ref = useRef(null);
-
-  useEffect(() => { setDraft(value); }, [value]);
-  useEffect(() => { if (editing) ref.current?.focus(); }, [editing]);
 
   const save = () => {
     setEditing(false);
@@ -24,7 +21,7 @@ function EditableText({ value, onChange, className, inputClassName }) {
   if (editing) {
     return (
       <input
-        ref={ref}
+        ref={(el) => { ref.current = el; if (el) el.focus(); }}
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         onBlur={save}
@@ -35,15 +32,64 @@ function EditableText({ value, onChange, className, inputClassName }) {
   }
 
   return (
-    <span onClick={() => setEditing(true)} className={className}>
+    <span onClick={() => { setDraft(value); setEditing(true); }} className={className}>
       {value.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')}
     </span>
   );
 }
 
-/* ─── Editor ─── */
+/* Day picker chip with inline expandable picker */
+function DayChip({ days = [], onChange }) {
+  const [open, setOpen] = useState(false);
+  const isDaily = !days || days.length === 0;
+  const label = isDaily ? 'Daily' : days.join(' ');
 
-export function ChecklistSection({ items, setItems }) {
+  const toggle = (d) => {
+    const next = days.includes(d) ? days.filter((x) => x !== d) : [...days, d];
+    onChange(next.length === 7 || next.length === 0 ? [] : next);
+  };
+
+  return (
+    <div className="relative">
+      <button
+        onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}
+        className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg cursor-pointer text-[10px] font-black uppercase tracking-wider whitespace-nowrap ${
+          isDaily ? 'bg-surface-alt text-muted hover:text-primary' : 'bg-brand/15 text-brand'
+        }`}
+      >
+        <Calendar size={11} />
+        {label}
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 top-full mt-1 z-20 rounded-2xl border border-card-border bg-card shadow-xl p-2 flex gap-1">
+            {ALL_DAYS.map((d) => {
+              const active = days.includes(d);
+              const allDays = isDaily;
+              return (
+                <button
+                  key={d}
+                  onClick={(e) => { e.stopPropagation(); toggle(d); }}
+                  className={`px-2.5 py-2 rounded-lg text-[11px] font-black uppercase cursor-pointer ${
+                    active || allDays
+                      ? (allDays ? 'bg-brand/15 text-brand' : 'bg-brand text-black')
+                      : 'bg-surface-alt text-muted hover:text-primary'
+                  }`}
+                >
+                  {d}
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/* Editor section */
+export function ChecklistSection({ items, setItems, kind }) {
   const [newItemText, setNewItemText] = useState('');
   const [addingTo, setAddingTo] = useState(null);
   const [newSection, setNewSection] = useState('');
@@ -51,49 +97,48 @@ export function ChecklistSection({ items, setItems }) {
   const [dragOver, setDragOver] = useState(null);
   const addRef = useRef(null);
 
-  const all = items.map((i) => ({
-    id: i.id || genId(), text: i.text || '', type: i.type || 'item',
-    indent: i.indent || 0, done: i.done || false, links: i.links || [],
-  }));
-
-  const [showDays, setShowDays] = useState(null); // item id showing day picker
-  const [showLinks, setShowLinks] = useState(null); // item id showing link editor
-  const [linkUrl, setLinkUrl] = useState('');
-  const [linkLabel, setLinkLabel] = useState('');
-
-  const addLink = (id) => {
-    if (!linkUrl.trim()) return;
-    setItems(all.map((i) => {
-      if (i.id !== id) return i;
-      const links = [...(i.links || []), { id: genId(), url: linkUrl.trim(), label: linkLabel.trim() || linkUrl.trim() }];
-      return { ...i, links };
+  // Strip out legacy section headers — we no longer support sections.
+  const all = items
+    .filter((i) => (i.type || 'item') !== 'header')
+    .map((i) => ({
+      id: i.id || genId(), text: i.text || '', type: i.type || 'item',
+      indent: i.indent || 0, done: i.done || false, links: i.links || [],
+      days: i.days, fieldWorkOnly: i.fieldWorkOnly,
     }));
-    setLinkUrl('');
-    setLinkLabel('');
-  };
-  const removeLink = (itemId, linkId) => {
-    setItems(all.map((i) => {
-      if (i.id !== itemId) return i;
-      return { ...i, links: (i.links || []).filter((l) => l.id !== linkId) };
-    }));
+
+  const weatherEnabled = all.some((i) => i.type === 'weather');
+  const toggleWeather = () => {
+    if (weatherEnabled) {
+      setItems(all.filter((i) => i.type !== 'weather'));
+    } else {
+      setItems([
+        { id: genId(), text: 'Weather Check', type: 'weather', indent: 0, done: false, links: [] },
+        ...all,
+      ]);
+    }
   };
 
   const update = (id, text) => setItems(all.map((i) => (i.id === id ? { ...i, text } : i)));
   const remove = (id) => setItems(all.filter((i) => i.id !== id));
-  const toggleFieldWork = (id) => setItems(all.map((i) => (i.id === id ? { ...i, fieldWorkOnly: !i.fieldWorkOnly } : i)));
-  const indent = (id, dir) => setItems(all.map((i) => {
-    if (i.id !== id) return i;
-    const next = Math.max(0, Math.min(2, (i.indent || 0) + dir));
-    return { ...i, indent: next };
-  }));
-  const toggleDay = (id, day) => setItems(all.map((i) => {
-    if (i.id !== id) return i;
-    const days = i.days || [];
-    const next = days.includes(day) ? days.filter((d) => d !== day) : [...days, day];
-    return { ...i, days: next.length === 7 || next.length === 0 ? undefined : next };
-  }));
+  const setDays = (id, days) => setItems(all.map((i) => (i.id === id ? { ...i, days: days.length ? days : undefined } : i)));
+  const moveBy = (id, delta) => {
+    const idx = all.findIndex((i) => i.id === id);
+    const target = idx + delta;
+    if (idx < 0 || target < 0 || target >= all.length) return;
+    const next = [...all];
+    [next[idx], next[target]] = [next[target], next[idx]];
+    setItems(next);
+  };
 
-  // Drag (items only, not headers)
+  // Sequential numbering across all non-header items so the user sees true order.
+  const itemNumbers = (() => {
+    const map = new Map();
+    let n = 0;
+    for (const i of all) if (i.type !== 'header') map.set(i.id, ++n);
+    return map;
+  })();
+
+  // Drag
   const onDragStart = (e, idx) => { setDragFrom(idx); e.dataTransfer.effectAllowed = 'move'; };
   const onDragEnd = () => {
     if (dragFrom != null && dragOver != null && dragFrom !== dragOver) {
@@ -103,22 +148,6 @@ export function ChecklistSection({ items, setItems }) {
   };
   const onDragOver = (e, idx) => { e.preventDefault(); if (idx !== dragOver) setDragOver(idx); };
 
-  // Group by headers
-  const groups = [];
-  let cur = { header: null, items: [] };
-  for (const i of all) {
-    if (i.type === 'header') { if (cur.header || cur.items.length) groups.push(cur); cur = { header: i, items: [] }; }
-    else cur.items.push(i);
-  }
-  if (cur.header || cur.items.length) groups.push(cur);
-
-  const moveSection = (gi, dir) => {
-    const si = gi + dir;
-    if (si < 0 || si >= groups.length) return;
-    const g = [...groups]; [g[gi], g[si]] = [g[si], g[gi]];
-    setItems(g.flatMap((s) => [s.header, ...s.items].filter(Boolean)));
-  };
-
   const addItem = (afterId) => {
     if (!newItemText.trim()) return;
     const idx = afterId ? all.findIndex((i) => i.id === afterId) + 1 : 0;
@@ -127,193 +156,138 @@ export function ChecklistSection({ items, setItems }) {
     setItems(u); setNewItemText('');
     setTimeout(() => addRef.current?.focus(), 50);
   };
-
   const flat = (id) => all.findIndex((i) => i.id === id);
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex-1 overflow-y-auto space-y-3 pb-4">
-        {groups.map((g, gi) => {
-          const tail = g.items[g.items.length - 1];
-          const addAfter = tail?.id || g.header?.id;
-
+      <div className="flex items-center justify-between gap-3 rounded-2xl border border-card-border bg-card px-4 py-3 mb-4">
+        <div className="flex items-center gap-2 min-w-0">
+          <Cloud size={16} className="text-sky-600 shrink-0" />
+          <div>
+            <p className="text-sm font-black text-primary">Weather Check</p>
+            <p className="text-[11px] font-bold text-tertiary">Adds a live-weather step you can drag into place</p>
+          </div>
+        </div>
+        <button
+          onClick={toggleWeather}
+          className={`relative inline-flex items-center w-11 h-6 rounded-full transition-colors cursor-pointer ${weatherEnabled ? 'bg-primary' : 'bg-surface-strong'}`}
+          aria-pressed={weatherEnabled}
+        >
+          <span className={`absolute w-5 h-5 rounded-full bg-card shadow transition-transform ${weatherEnabled ? 'translate-x-5' : 'translate-x-0.5'}`} />
+        </button>
+      </div>
+      <div className="flex-1 overflow-y-auto pb-4">
+        {(() => {
+          const tail = all[all.length - 1];
+          const addAfter = tail?.id || null;
           return (
-            <div key={g.header?.id || `g${gi}`} className="rounded-2xl border border-border-subtle overflow-hidden">
-              {/* Section title */}
-              {g.header && (
-                <div
-                  data-drag-index={flat(g.header.id)}
-                  onDragOver={(e) => onDragOver(e, flat(g.header.id))}
-                  className={`flex items-center gap-1.5 px-4 py-2.5 bg-surface-alt/50 ${
-                    dragOver === flat(g.header.id) && dragFrom != null ? 'ring-1 ring-brand' : ''
-                  }`}
-                >
-                  <EditableText
-                    value={g.header.text}
-                    onChange={(t) => update(g.header.id, t)}
-                    className="flex-1 text-[11px] font-bold text-muted uppercase tracking-widest cursor-text"
-                    inputClassName="flex-1 bg-transparent outline-none text-[11px] font-bold text-primary uppercase tracking-widest"
-                  />
-                  <button onClick={() => moveSection(gi, -1)} disabled={gi === 0} className="p-1 text-muted/30 hover:text-muted disabled:opacity-0 cursor-pointer"><ChevronUp size={13} /></button>
-                  <button onClick={() => moveSection(gi, 1)} disabled={gi === groups.length - 1} className="p-1 text-muted/30 hover:text-muted disabled:opacity-0 cursor-pointer"><ChevronDown size={13} /></button>
-                  <button onClick={() => remove(g.header.id)} className="p-1 text-muted/20 hover:text-red-500 cursor-pointer"><Trash2 size={12} /></button>
-                </div>
-              )}
-
-              {/* Items */}
-              {g.items.map((item) => {
-                const fi = flat(item.id);
-                return (
-                  <div key={item.id}>
+            <div>
+              <div className="rounded-2xl border border-card-border bg-card overflow-hidden">
+                {all.map((item, ii) => {
+                  const fi = flat(item.id);
+                  return (
                     <div
+                      key={item.id}
                       data-drag-index={fi}
                       draggable
                       onDragStart={(e) => onDragStart(e, fi)}
                       onDragEnd={onDragEnd}
                       onDragOver={(e) => onDragOver(e, fi)}
-                      style={{ paddingLeft: 16 + (item.indent || 0) * 24 }}
-                      className={`group flex items-center gap-2 pr-4 py-2.5 border-t border-border-subtle/40 ${
-                        dragFrom === fi ? 'opacity-20' : ''
-                      } ${dragOver === fi && dragFrom != null && dragFrom !== fi ? 'border-t-brand border-t-2' : ''}`}
+                      className={`group flex items-center gap-2 pl-2 pr-2 py-2.5 ${
+                        ii > 0 ? 'border-t border-card-border/40' : ''
+                      } ${dragFrom === fi ? 'opacity-30' : ''} ${
+                        dragOver === fi && dragFrom != null && dragFrom !== fi ? 'border-t-brand border-t-2' : ''
+                      }`}
                     >
-                      <GripVertical size={12} className="text-muted/20 group-hover:text-muted/50 cursor-grab active:cursor-grabbing shrink-0" />
-                      <button onClick={() => indent(item.id, -1)} disabled={(item.indent || 0) === 0}
-                        className="p-0.5 text-transparent group-hover:text-muted/40 hover:!text-secondary disabled:opacity-0 cursor-pointer shrink-0"
-                        title="Outdent">
-                        <ChevronLeft size={12} />
-                      </button>
-                      <button onClick={() => indent(item.id, 1)} disabled={(item.indent || 0) >= 2}
-                        className="p-0.5 text-transparent group-hover:text-muted/40 hover:!text-secondary disabled:opacity-0 cursor-pointer shrink-0"
-                        title="Indent">
-                        <ChevronRight size={12} />
-                      </button>
+                      <GripVertical size={14} className="text-muted/30 group-hover:text-muted/60 cursor-grab active:cursor-grabbing shrink-0 hidden sm:block" />
+                      <span className="shrink-0 w-7 text-center text-[11px] font-black text-muted tabular-nums">
+                        {itemNumbers.get(item.id)}
+                      </span>
+                      {item.type === 'weather' && (
+                        <Cloud size={14} className="text-sky-600 shrink-0" />
+                      )}
                       <EditableText
                         value={item.text}
                         onChange={(t) => update(item.id, t)}
-                        className={`flex-1 cursor-text min-w-0 ${(item.indent || 0) > 0 ? 'text-[13px] text-secondary' : 'text-sm text-primary'}`}
-                        inputClassName={`flex-1 w-full bg-transparent outline-none ${(item.indent || 0) > 0 ? 'text-[13px] text-secondary' : 'text-sm text-primary'}`}
+                        className={`flex-1 cursor-text min-w-0 text-sm break-words ${item.type === 'weather' ? 'font-black text-primary' : 'font-medium text-primary'}`}
+                        inputClassName="flex-1 w-full bg-transparent outline-none text-sm font-medium text-primary"
                       />
-                      <button onClick={() => setShowDays(showDays === item.id ? null : item.id)}
-                        className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-lg cursor-pointer shrink-0 transition-colors text-[9px] font-bold ${item.days?.length ? 'bg-brand/10 text-brand-text' : 'text-muted/40 group-hover:text-muted/60'}`}>
-                        <Calendar size={11} />
-                        {item.days?.length ? item.days.map((d) => d[0]).join('') : ''}
+                      {item.type === 'weather' && (
+                        <span className="shrink-0 text-[10px] font-bold text-tertiary uppercase tracking-wider">Live</span>
+                      )}
+                      <div className="flex flex-col shrink-0">
+                        <button
+                          onClick={() => moveBy(item.id, -1)}
+                          disabled={fi === 0}
+                          className="p-0.5 text-muted/40 hover:text-primary cursor-pointer disabled:opacity-20 disabled:cursor-not-allowed"
+                          title="Move up"
+                        >
+                          <ChevronUp size={14} />
+                        </button>
+                        <button
+                          onClick={() => moveBy(item.id, 1)}
+                          disabled={fi === all.length - 1}
+                          className="p-0.5 text-muted/40 hover:text-primary cursor-pointer disabled:opacity-20 disabled:cursor-not-allowed"
+                          title="Move down"
+                        >
+                          <ChevronDown size={14} />
+                        </button>
+                      </div>
+                      <DayChip days={item.days || []} onChange={(d) => setDays(item.id, d)} />
+                      {kind && (
+                        <RouterLink
+                          to={`/checklist/${kind}/${item.id}`}
+                          className="shrink-0 w-8 h-8 flex items-center justify-center rounded-lg text-muted hover:text-primary hover:bg-surface-alt cursor-pointer"
+                          title="Open details · SOP, sub-checklist, links"
+                        >
+                          <ChevronRight size={16} />
+                        </RouterLink>
+                      )}
+                      <button onClick={() => remove(item.id)} className="p-1.5 text-muted/30 hover:text-red-400 cursor-pointer shrink-0" title="Delete">
+                        <Trash2 size={14} />
                       </button>
-                      <button onClick={() => { setShowLinks(showLinks === item.id ? null : item.id); setLinkUrl(''); setLinkLabel(''); }}
-                        className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-lg cursor-pointer shrink-0 transition-colors text-[9px] font-bold ${item.links?.length ? 'bg-emerald-500/10 text-emerald-600' : 'text-muted/40 group-hover:text-muted/60'}`}
-                        title="External links">
-                        <Link size={11} />
-                        {item.links?.length ? item.links.length : ''}
-                      </button>
-                      <button onClick={() => toggleFieldWork(item.id)} className={`p-1 cursor-pointer shrink-0 transition-colors ${item.fieldWorkOnly ? 'text-brand-text' : 'text-transparent group-hover:text-muted/30 hover:!text-brand-text'}`} title="Field work only"><Truck size={12} /></button>
-                      <button onClick={() => remove(item.id)} className="p-1 text-transparent group-hover:text-muted/40 hover:!text-red-500 cursor-pointer shrink-0"><Trash2 size={12} /></button>
                     </div>
-                    {showDays === item.id && (
-                      <div className="flex items-center gap-1.5 px-4 py-2.5 ml-[24px] bg-surface-alt/50 border-t border-border-subtle/30">
-                        {ALL_DAYS.map((d) => {
-                          const active = !item.days || item.days.includes(d);
-                          return (
-                            <button key={d} onClick={() => toggleDay(item.id, d)}
-                              className={`flex-1 py-2 rounded-lg text-[11px] font-bold cursor-pointer transition-all ${active ? 'bg-brand text-on-brand' : 'bg-surface-alt text-muted/40 hover:text-muted'}`}>
-                              {d}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-                    {showLinks === item.id && (
-                      <div className="px-4 py-3 ml-[24px] bg-surface-alt/50 border-t border-border-subtle/30 space-y-2">
-                        {/* Existing links */}
-                        {(item.links || []).map((link) => (
-                          <div key={link.id} className="flex items-center gap-2 text-xs">
-                            <ExternalLink size={11} className="text-emerald-500 shrink-0" />
-                            <a href={link.url} target="_blank" rel="noopener noreferrer" className="text-emerald-600 hover:underline truncate flex-1">{link.label || link.url}</a>
-                            <button onClick={() => removeLink(item.id, link.id)} className="p-0.5 text-muted/40 hover:text-red-500 cursor-pointer shrink-0"><Trash2 size={11} /></button>
-                          </div>
-                        ))}
-                        {/* Add new link */}
-                        <div className="flex items-center gap-2">
-                          <input
-                            value={linkLabel}
-                            onChange={(e) => setLinkLabel(e.target.value)}
-                            placeholder="Label (optional)"
-                            className="w-24 bg-transparent border border-border-subtle rounded-lg px-2 py-1.5 text-xs text-primary outline-none focus:ring-1 focus:ring-brand placeholder:text-muted/40"
-                          />
-                          <input
-                            value={linkUrl}
-                            onChange={(e) => setLinkUrl(e.target.value)}
-                            onKeyDown={(e) => { if (e.key === 'Enter') addLink(item.id); }}
-                            placeholder="https://..."
-                            className="flex-1 bg-transparent border border-border-subtle rounded-lg px-2 py-1.5 text-xs text-primary outline-none focus:ring-1 focus:ring-brand placeholder:text-muted/40"
-                          />
-                          <button
-                            onClick={() => addLink(item.id)}
-                            disabled={!linkUrl.trim()}
-                            className="px-2.5 py-1.5 rounded-lg bg-emerald-500 text-white text-[10px] font-bold hover:bg-emerald-600 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer shrink-0"
-                          >
-                            Add
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+                  );
+                })}
 
-              {/* Inline add */}
-              <div className="flex items-center gap-2 px-4 py-2 border-t border-border-subtle/30">
-                <Plus size={12} className="text-muted/30 shrink-0 ml-[12px]" />
-                <input
-                  ref={addingTo === addAfter ? addRef : null}
-                  value={addingTo === addAfter ? newItemText : ''}
-                  onFocus={() => { setAddingTo(addAfter); setNewItemText(''); }}
-                  onChange={(e) => setNewItemText(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') addItem(addAfter); }}
-                  placeholder="Add..."
-                  className="flex-1 bg-transparent outline-none text-sm text-primary placeholder:text-muted/30"
-                />
+                {/* Inline add */}
+                <div className="flex items-center gap-2 px-3 py-2 border-t border-card-border/40 bg-surface-alt/30">
+                  <Plus size={14} className="text-muted/40 shrink-0" />
+                  <input
+                    ref={addingTo === addAfter ? addRef : null}
+                    value={addingTo === addAfter ? newItemText : ''}
+                    onFocus={() => { setAddingTo(addAfter); setNewItemText(''); }}
+                    onChange={(e) => setNewItemText(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') addItem(addAfter); }}
+                    placeholder="Add step..."
+                    className="flex-1 bg-transparent outline-none text-sm text-primary placeholder:text-muted/50"
+                  />
+                </div>
               </div>
             </div>
           );
-        })}
+        })()}
 
         {all.length === 0 && <p className="text-muted/50 text-sm text-center py-12">Empty</p>}
-      </div>
-
-      {/* New section */}
-      <div className="shrink-0 flex gap-2 pt-3 border-t border-border-subtle">
-        <input
-          value={newSection}
-          onChange={(e) => setNewSection(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter' && newSection.trim()) { setItems([...all, { id: genId(), text: newSection.trim(), type: 'header', indent: 0, done: false, links: [] }]); setNewSection(''); } }}
-          placeholder="New section..."
-          className="flex-1 rounded-xl border border-border-default px-4 py-2.5 text-sm text-primary outline-none focus:ring-2 focus:ring-brand placeholder:text-muted/40"
-        />
-        <button
-          onClick={() => { if (newSection.trim()) { setItems([...all, { id: genId(), text: newSection.trim(), type: 'header', indent: 0, done: false, links: [] }]); setNewSection(''); } }}
-          className="px-4 py-2.5 rounded-xl bg-brand text-on-brand text-xs font-semibold hover:bg-brand-hover cursor-pointer shrink-0"
-        >
-          <Plus size={14} />
-        </button>
       </div>
     </div>
   );
 }
 
-/* ─── Full-screen editor ─── */
-
-export default function ChecklistEditorModal({ onClose, items, setItems, title, extraHeader }) {
+/* Full-screen modal */
+export default function ChecklistEditorModal({ onClose, items, setItems, title, extraHeader, kind }) {
   return (
     <div className="fixed inset-0 z-50 bg-surface">
-      <div className="h-full flex flex-col max-w-2xl mx-auto">
+      <div className="h-full flex flex-col max-w-3xl mx-auto">
         <div className="flex items-center gap-3 px-5 py-4 shrink-0">
           <button onClick={onClose} className="p-2 -ml-2 rounded-xl text-secondary hover:bg-surface-alt cursor-pointer">
             <ArrowLeft size={20} />
           </button>
-          <h1 className="text-lg font-bold text-primary">{title || 'Edit'}</h1>
+          <h1 className="text-xl font-black text-primary tracking-tight">{title || 'Edit'}</h1>
         </div>
         {extraHeader}
         <div className="flex-1 min-h-0 px-5 pb-5 flex flex-col">
-          <ChecklistSection items={items} setItems={setItems} />
+          <ChecklistSection items={items} setItems={setItems} kind={kind} />
         </div>
       </div>
     </div>

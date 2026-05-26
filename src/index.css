@@ -13,19 +13,19 @@
   --color-secondary: #1a1a1a;      /* near-black */
   --color-tertiary: #525252;       /* neutral-600 */
   --color-muted: #737373;          /* neutral-500 */
-  --color-on-brand: #000000;       /* black on lime */
+  --color-on-brand: #ffffff;       /* white on green */
 
   --color-border-subtle: #f3f4f6;  /* gray-100 */
   --color-border-default: #e5e7eb; /* gray-200 */
   --color-border-strong: #d1d5db;  /* gray-300 */
 
-  --color-brand-light: #f0ffe0;    /* light lime tint */
-  --color-brand: #B0FF03;          /* hj-green */
-  --color-brand-hover: #9ae600;    /* darker lime */
-  --color-brand-text: #4d7a00;     /* readable lime on white */
-  --color-brand-text-strong: #3d6200; /* darker readable lime */
-  --color-border-brand: #B0FF03;   /* hj-green */
-  --color-ring-brand: #B0FF03;     /* hj-green */
+  --color-brand-light: #dcfce7;    /* light green tint */
+  --color-brand: #16a34a;          /* green-600 — readable on white */
+  --color-brand-hover: #15803d;    /* green-700 */
+  --color-brand-text: #15803d;     /* green-700 — body text on light */
+  --color-brand-text-strong: #14532d; /* green-900 */
+  --color-border-brand: #16a34a;   /* green-600 */
+  --color-ring-brand: #16a34a;     /* green-600 */
   --color-placeholder-muted: #9ca3af; /* gray-400 */
 }
 

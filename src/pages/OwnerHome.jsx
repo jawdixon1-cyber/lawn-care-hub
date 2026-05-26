@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef, useMemo, lazy, Suspense } from 'react';
-import { Check, Sun, Moon, Users, DollarSign, RotateCcw, Pencil, Plus, X, ChevronLeft, ChevronRight, Link2, ExternalLink, Briefcase } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Check, Sun, Moon, Users, DollarSign, RotateCcw, Pencil, Plus, X, ChevronLeft, ChevronRight, Link2, ExternalLink, Briefcase, Play, Inbox, TrendingUp, TrendingDown, Minus, FileText } from 'lucide-react';
 import { useAppStore } from '../store/AppStoreContext';
 import { getTodayInTimezone } from '../utils/timezone';
 import renderLinkedText from '../utils/renderLinkedText';
@@ -692,24 +693,206 @@ function Planner({ todos, setTodos }) {
   );
 }
 
-function StatCard({ icon: Icon, label, value, subtle, accent }) {
+function StatCard({ icon: Icon, label, value, subtle, accent, onClick }) {
   return (
-    <div className="relative overflow-hidden rounded-3xl border border-brand/30 bg-card p-6 sm:p-8"
+    <div
+      onClick={onClick}
+      className={`relative overflow-hidden rounded-3xl border border-card-border bg-card p-6 sm:p-8 ${onClick ? 'cursor-pointer transition-transform hover:-translate-y-0.5 hover:border-primary/30' : ''}`}
       style={{
-        background: 'radial-gradient(120% 140% at 50% 0%, rgba(190,242,100,0.18) 0%, rgba(190,242,100,0.04) 50%, transparent 80%), var(--card-bg, rgb(15,15,15))',
-        boxShadow: '0 22px 60px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.06)',
+        boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
       }}>
-      <div className="absolute -top-10 -right-10 w-40 h-40 rounded-full bg-brand/10 blur-3xl pointer-events-none" />
       <div className="relative flex items-center gap-3 mb-4">
-        <div className="w-11 h-11 rounded-2xl bg-brand/15 border border-brand/30 flex items-center justify-center text-brand">
+        <div className="w-11 h-11 rounded-2xl bg-surface-alt border border-card-border flex items-center justify-center text-primary">
           <Icon size={22} />
         </div>
-        <p className="text-[11px] font-black uppercase tracking-[0.18em] text-secondary">{label}</p>
+        <p className="text-[11px] font-black uppercase tracking-[0.18em] text-tertiary">{label}</p>
       </div>
-      <p className={`relative text-6xl sm:text-7xl font-black tracking-tight leading-none ${accent ? 'text-brand drop-shadow-[0_0_24px_rgba(190,242,100,0.35)]' : 'text-primary'}`}>
+      <p className="relative text-6xl sm:text-7xl font-black tracking-tight leading-none text-primary">
         {value}
       </p>
-      {subtle && <p className="relative mt-3 text-sm text-secondary font-semibold">{subtle}</p>}
+      {subtle && <p className="relative mt-3 text-sm text-tertiary font-semibold">{subtle}</p>}
+    </div>
+  );
+}
+
+function RouteGoalBanner({ clients, goal, monthly, loading, onClick }) {
+  const current = clients ?? 0;
+  const pct = Math.min(100, Math.round((current / goal) * 100));
+  const remaining = Math.max(0, goal - current);
+  const filled = current >= goal;
+
+  return (
+    <div
+      onClick={onClick}
+      className="relative overflow-hidden rounded-3xl border border-card-border bg-card p-6 sm:p-8 cursor-pointer transition-transform hover:-translate-y-0.5"
+      style={{ boxShadow: '0 1px 2px rgba(0,0,0,0.04)' }}
+    >
+      <div className="flex items-start justify-between gap-6 flex-wrap mb-5">
+        <div>
+          <p className="text-[11px] font-black uppercase tracking-[0.18em] text-tertiary">Route Progress</p>
+          <div className="flex items-baseline gap-3 mt-2">
+            <p className="text-6xl sm:text-7xl font-black tracking-tight text-primary leading-none">
+              {loading && clients == null ? '—' : current}
+            </p>
+            <p className="text-2xl sm:text-3xl font-black text-tertiary">/ {goal}</p>
+          </div>
+          <p className="text-sm font-bold text-tertiary mt-2">
+            {filled ? 'Route is full. Time to raise the goal.' : `${remaining} more recurring client${remaining === 1 ? '' : 's'} to fill the route`}
+          </p>
+        </div>
+        <div className="text-right">
+          <p className="text-[11px] font-black uppercase tracking-[0.18em] text-tertiary">Monthly Revenue</p>
+          <p className="text-3xl sm:text-4xl font-black text-primary mt-1 leading-none">
+            {loading && monthly == null ? '—' : money(monthly || 0)}
+          </p>
+          <p className="text-xs font-bold text-tertiary mt-1">From recurring</p>
+        </div>
+      </div>
+
+      <div className="h-3 rounded-full bg-surface-alt overflow-hidden">
+        <div
+          className={`h-full transition-all duration-700 ${filled ? 'bg-emerald-500' : 'bg-primary'}`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <div className="flex justify-between mt-1.5 text-[10px] font-black uppercase tracking-wider text-tertiary">
+        <span>{pct}% filled</span>
+        <span>{goal}</span>
+      </div>
+    </div>
+  );
+}
+
+function WeekDetailModal({ open, onClose, weekLabel, items, label, showAmount }) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40" onClick={onClose}>
+      <div className="bg-card rounded-3xl border border-card-border max-w-lg w-full max-h-[80vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-card-border">
+          <div>
+            <p className="text-[11px] font-black uppercase tracking-[0.18em] text-tertiary">{label}</p>
+            <h2 className="text-xl font-black text-primary mt-0.5">Week of {weekLabel} · {items.length}</h2>
+          </div>
+          <button onClick={onClose} className="w-9 h-9 rounded-xl hover:bg-surface-alt flex items-center justify-center cursor-pointer">
+            <X size={18} />
+          </button>
+        </div>
+        <div className="overflow-y-auto px-3 py-2">
+          {items.length === 0 ? (
+            <p className="text-sm text-tertiary font-semibold text-center py-8">Nothing this week.</p>
+          ) : (
+            <ul className="divide-y divide-card-border">
+              {items.map((it) => (
+                <li key={it.id} className="py-3 px-3 flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-bold text-primary truncate">{it.label}</p>
+                    {it.sub && <p className="text-xs text-tertiary font-semibold truncate">{it.sub}</p>}
+                  </div>
+                  <div className="text-right shrink-0">
+                    {showAmount && it.amount != null && (
+                      <p className="font-black text-primary">${Number(it.amount).toLocaleString()}</p>
+                    )}
+                    {it.when && (
+                      <p className="text-[10px] text-tertiary font-bold">
+                        {new Date(it.when).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                      </p>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function WeeklyHistoryCard({ data, icon: Icon, label, unitSingular, unitPlural, showAmount }) {
+  const { weeks, thisWeek, lastWeek, loading, error } = data;
+  const max = Math.max(1, ...weeks.map((w) => w.count));
+  const [openWeekIdx, setOpenWeekIdx] = useState(null);
+  const openWeek = openWeekIdx == null ? null : weeks[openWeekIdx];
+  const delta = thisWeek != null && lastWeek != null
+    ? (lastWeek === 0 ? (thisWeek > 0 ? 100 : 0) : Math.round(((thisWeek - lastWeek) / lastWeek) * 100))
+    : null;
+  const DeltaIcon = delta == null ? Minus : delta > 0 ? TrendingUp : delta < 0 ? TrendingDown : Minus;
+  const deltaColor = delta == null ? 'text-tertiary' : delta > 0 ? 'text-emerald-600' : delta < 0 ? 'text-rose-600' : 'text-tertiary';
+  const totalCount = weeks.reduce((s, w) => s + w.count, 0);
+  const totalAmount = weeks.reduce((s, w) => s + (w.amount || 0), 0);
+
+  return (
+    <div className="relative overflow-hidden rounded-3xl border border-card-border bg-card p-6 sm:p-8" style={{ boxShadow: '0 1px 2px rgba(0,0,0,0.04)' }}>
+      <div className="flex items-start justify-between gap-6 flex-wrap">
+        <div className="flex items-center gap-3">
+          <div className="w-11 h-11 rounded-2xl bg-surface-alt border border-card-border flex items-center justify-center text-primary">
+            <Icon size={22} />
+          </div>
+          <div>
+            <p className="text-[11px] font-black uppercase tracking-[0.18em] text-tertiary">{label}</p>
+            <div className="flex items-baseline gap-3 mt-1">
+              <p className="text-5xl sm:text-6xl font-black tracking-tight text-primary leading-none">
+                {loading && thisWeek == null ? '—' : error && thisWeek == null ? '?' : thisWeek ?? 0}
+              </p>
+              {delta != null && (
+                <span className={`inline-flex items-center gap-1 text-sm font-bold ${deltaColor}`}>
+                  <DeltaIcon size={14} />
+                  {delta > 0 ? '+' : ''}{delta}% vs last wk
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+        <div className="text-right">
+          <p className="text-[11px] font-black uppercase tracking-[0.18em] text-tertiary">Past 12 Weeks</p>
+          <p className="text-sm font-bold text-tertiary mt-1">
+            {totalCount} {totalCount === 1 ? unitSingular : unitPlural}
+            {showAmount && totalAmount > 0 ? ` · $${totalAmount.toLocaleString()}` : ''}
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-6">
+        <div className="flex items-end gap-1.5 h-32">
+          {weeks.length === 0 && (
+            <div className="w-full flex items-center justify-center text-sm text-tertiary font-semibold">
+              {loading ? 'Loading…' : error ? 'Could not load' : 'No data'}
+            </div>
+          )}
+          {weeks.map((w, i) => {
+            const isCurrent = i === weeks.length - 1;
+            const h = Math.max(4, Math.round((w.count / max) * 120));
+            const tip = `Week of ${w.label}: ${w.count} ${w.count === 1 ? unitSingular : unitPlural}${showAmount && w.amount ? ` ($${w.amount.toLocaleString()})` : ''}`;
+            const clickable = (w.items?.length || 0) > 0;
+            return (
+              <button
+                key={i}
+                onClick={() => clickable && setOpenWeekIdx(i)}
+                disabled={!clickable}
+                className={`flex-1 flex flex-col items-center gap-1 group ${clickable ? 'cursor-pointer' : 'cursor-default'}`}
+              >
+                <span className={`text-[10px] font-bold transition-opacity ${w.count > 0 ? 'opacity-100' : 'opacity-0 group-hover:opacity-60'} text-tertiary`}>
+                  {w.count}
+                </span>
+                <div
+                  className={`w-full rounded-md transition-transform ${isCurrent ? 'bg-primary' : 'bg-surface-alt border border-card-border'} ${clickable ? 'group-hover:scale-105' : ''}`}
+                  style={{ height: `${h}px` }}
+                  title={tip}
+                />
+                <span className="text-[9px] font-bold text-tertiary truncate">{w.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <WeekDetailModal
+        open={openWeekIdx != null}
+        onClose={() => setOpenWeekIdx(null)}
+        weekLabel={openWeek?.label}
+        items={openWeek?.items || []}
+        label={label}
+        showAmount={showAmount}
+      />
     </div>
   );
 }
@@ -724,40 +907,28 @@ function ChecklistCard({ kind, title, icon: Icon, items, setItems, completedCoun
   const visible = items.filter((i) => i.type === 'header' || isItemForToday(i));
 
   return (
-    <div className="relative overflow-hidden rounded-3xl border border-card-border bg-card"
-      style={{
-        background: kind === 'start'
-          ? 'radial-gradient(120% 110% at 0% 0%, rgba(251,191,36,0.10) 0%, transparent 60%), var(--card-bg, rgb(13,13,13))'
-          : 'radial-gradient(120% 110% at 100% 0%, rgba(99,102,241,0.10) 0%, transparent 60%), var(--card-bg, rgb(13,13,13))',
-      }}>
+    <div className="relative overflow-hidden rounded-3xl border border-card-border bg-card">
       {/* Header */}
       <div className="flex items-center justify-between gap-3 px-5 sm:px-6 pt-5 pb-3">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${
-            kind === 'start' ? 'bg-amber-400/15 text-amber-300 border border-amber-400/25' : 'bg-indigo-400/15 text-indigo-300 border border-indigo-400/25'
-          }`}>
-            <Icon size={24} />
-          </div>
-          <div className="min-w-0">
-            <h2 className="text-2xl sm:text-3xl font-black text-primary tracking-tight">{title}</h2>
-            <p className="text-xs font-bold text-secondary mt-0.5">{completedCount} of {totalCount} done · {pct}%</p>
-          </div>
+        <div className="min-w-0">
+          <h2 className="text-xl sm:text-2xl font-black text-primary tracking-tight">{title}</h2>
+          <p className="text-xs font-bold text-muted mt-0.5">{completedCount}/{totalCount}</p>
         </div>
-        <div className="flex items-center gap-1 shrink-0">
+        <div className="flex items-center gap-0.5 shrink-0">
           {completedCount > 0 && (
-            <button onClick={onResetAll} className="text-xs font-bold text-muted hover:text-primary px-2 py-1.5 rounded-lg hover:bg-surface-alt cursor-pointer inline-flex items-center gap-1">
-              <RotateCcw size={12} /> Reset
+            <button onClick={onResetAll} className="w-8 h-8 flex items-center justify-center rounded-lg text-muted hover:text-primary hover:bg-surface-alt cursor-pointer" title="Reset">
+              <RotateCcw size={14} />
             </button>
           )}
-          <button onClick={onEdit} className="text-xs font-bold text-muted hover:text-primary px-2 py-1.5 rounded-lg hover:bg-surface-alt cursor-pointer inline-flex items-center gap-1" title="Edit checklist">
-            <Pencil size={12} /> Edit
+          <button onClick={onEdit} className="w-8 h-8 flex items-center justify-center rounded-lg text-muted hover:text-primary hover:bg-surface-alt cursor-pointer" title="Edit checklist">
+            <Pencil size={14} />
           </button>
         </div>
       </div>
 
       {/* Progress bar */}
       <div className="px-5 sm:px-6">
-        <div className="h-2 rounded-full bg-surface-alt overflow-hidden">
+        <div className="h-1.5 rounded-full bg-surface-alt overflow-hidden">
           <div
             className={`h-full transition-all duration-500 ${allDone ? 'bg-emerald-400' : kind === 'start' ? 'bg-amber-400' : 'bg-indigo-400'}`}
             style={{ width: `${pct}%` }}
@@ -765,66 +936,34 @@ function ChecklistCard({ kind, title, icon: Icon, items, setItems, completedCoun
         </div>
       </div>
 
-      {/* Items */}
-      <div className="px-3 sm:px-4 py-4 space-y-1.5">
-        {visible.length === 0 && <p className="text-sm text-muted py-6 text-center">No items for today.</p>}
-        {visible.map((item) => {
-          if (item.type === 'header') {
-            return <p key={item.id} className="text-[10px] font-black uppercase tracking-[0.18em] text-muted px-3 pt-3 pb-1">{item.text}</p>;
-          }
-          const links = item.links || [];
-          return (
-            <div
-              key={item.id}
-              className={`w-full flex items-start gap-3 text-left rounded-2xl px-4 py-4 transition-colors ${
-                item.done ? 'bg-emerald-500/8 hover:bg-emerald-500/12' : 'hover:bg-surface-alt'
-              }`}
-            >
-              <button
-                onClick={() => toggle(item.id)}
-                className={`mt-0.5 w-7 h-7 rounded-xl flex items-center justify-center shrink-0 cursor-pointer transition-all ${
-                  item.done
-                    ? 'bg-emerald-400 text-emerald-950 shadow-[0_0_18px_rgba(52,211,153,0.45)]'
-                    : 'border-2 border-card-border bg-surface-alt'
-                }`}
-              >
-                {item.done && <Check size={16} strokeWidth={3.5} />}
-              </button>
-              <span
-                onClick={() => toggle(item.id)}
-                className={`flex-1 text-base sm:text-lg font-bold leading-snug cursor-pointer ${item.done ? 'text-muted line-through' : 'text-primary'}`}
-              >
-                {renderLinkedText(item.text)}
-              </span>
-              {links.length > 0 && (
-                <div className="shrink-0 flex items-center gap-1">
-                  {links.map((l) => (
-                    <a key={l.id} href={l.url} target="_blank" rel="noopener noreferrer"
-                      onClick={(e) => e.stopPropagation()}
-                      className="w-8 h-8 flex items-center justify-center rounded-lg bg-brand/10 hover:bg-brand/20 text-brand cursor-pointer"
-                      title={l.label || l.url}>
-                      <ExternalLink size={14} />
-                    </a>
-                  ))}
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-
-      {allDone && (
-        <div className="px-5 sm:px-6 pb-5">
-          <div className="rounded-2xl bg-emerald-500/12 border border-emerald-500/30 px-4 py-3 text-center">
+      {/* Compact summary */}
+      <div className="px-5 sm:px-6 pb-5 pt-4">
+        {allDone ? (
+          <div className="rounded-2xl bg-emerald-500/12 border border-emerald-500/30 px-4 py-4 text-center">
             <p className="text-sm font-black text-emerald-300">All done. {kind === 'start' ? 'Get out there.' : 'Lock it up.'}</p>
           </div>
-        </div>
-      )}
+        ) : (
+          <Link
+            to={`/workflow/${kind}/0`}
+            className={`w-full flex items-center justify-between gap-3 rounded-2xl px-5 py-4 cursor-pointer font-black uppercase tracking-wider text-sm ${
+              kind === 'start'
+                ? 'bg-amber-400 text-amber-950 hover:brightness-110'
+                : 'bg-indigo-400 text-indigo-950 hover:brightness-110'
+            }`}
+          >
+            <span className="inline-flex items-center gap-2">
+              <Play size={16} fill="currentColor" /> {completedCount === 0 ? 'Start' : 'Continue'} Workflow
+            </span>
+            <span className="text-xs font-black opacity-70">{totalCount - completedCount} left</span>
+          </Link>
+        )}
+      </div>
     </div>
   );
 }
 
 export default function OwnerHome() {
+  const navigate = useNavigate();
   const ownerStartChecklist = useAppStore((s) => s.ownerStartChecklist);
   const setOwnerStartChecklist = useAppStore((s) => s.setOwnerStartChecklist);
   const ownerEndChecklist = useAppStore((s) => s.ownerEndChecklist);
@@ -846,65 +985,115 @@ export default function OwnerHome() {
   // 'start' | 'end' | null
   const [editing, setEditing] = useState(null);
 
-  // Recurring data
-  const [recurring, setRecurring] = useState({ clients: null, monthly: null, loading: true, error: null });
-  useEffect(() => {
-    fetch('/api/jobber-data?action=recurring-summary')
+  // Recurring data — hydrate from localStorage cache on mount so the page is never empty.
+  const RECURRING_CACHE_KEY = 'boost-recurring-summary-cache';
+  const [recurring, setRecurring] = useState(() => {
+    try {
+      const cached = localStorage.getItem(RECURRING_CACHE_KEY);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        return { clients: parsed.clients, monthly: parsed.monthly, loading: false, error: null };
+      }
+    } catch { /* ignore parse errors */ }
+    return { clients: null, monthly: null, loading: true, error: null };
+  });
+  const fetchRecurring = () => {
+    fetch(`/api/jobber-data?action=recurring-summary&_=${Date.now()}`, { cache: 'no-store' })
       .then((r) => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
       .then((d) => {
         const lawnMonthly = (d?.lawnJobs || []).reduce((s, j) => s + (j.monthly || 0), 0);
-        setRecurring({ clients: (d?.recurringClientList || []).length, monthly: lawnMonthly, loading: false, error: null });
+        const clients = (d?.recurringClientList || []).length;
+        setRecurring({ clients, monthly: lawnMonthly, loading: false, error: null });
+        try { localStorage.setItem(RECURRING_CACHE_KEY, JSON.stringify({ clients, monthly: lawnMonthly })); } catch { /* ignore quota */ }
       })
-      .catch((err) => setRecurring({ clients: null, monthly: null, loading: false, error: err.message }));
+      .catch((err) => setRecurring((prev) => ({
+        clients: prev.clients,
+        monthly: prev.monthly,
+        loading: false,
+        error: prev.clients == null ? err.message : null,
+      })));
+  };
+  // Trigger a fresh sync from Jobber (catches missed webhook updates). Throttled to 1/min.
+  const lastSyncRef = useRef(0);
+  const triggerSyncAndRefresh = async () => {
+    const now = Date.now();
+    if (now - lastSyncRef.current < 60_000) {
+      fetchRecurring();
+      return;
+    }
+    lastSyncRef.current = now;
+    try {
+      await fetch(`/api/jobber-data?action=hub-sync&entity=visits&sinceDays=7&untilDays=30&_=${now}`, { cache: 'no-store' });
+    } catch { /* ignore — sync is best-effort */ }
+    fetchRecurring();
+  };
+  useEffect(() => {
+    triggerSyncAndRefresh();
+    const onFocus = () => { if (document.visibilityState === 'visible') triggerSyncAndRefresh(); };
+    document.addEventListener('visibilitychange', onFocus);
+    window.addEventListener('focus', onFocus);
+    return () => {
+      document.removeEventListener('visibilitychange', onFocus);
+      window.removeEventListener('focus', onFocus);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Generic weekly-history hook — used by Requests and Quotes cards.
+  const useWeeklyHistory = (action, cacheKey) => {
+    const [state, setState] = useState(() => {
+      try {
+        const cached = localStorage.getItem(cacheKey);
+        if (cached) return { ...JSON.parse(cached), loading: false, error: null };
+      } catch { /* ignore */ }
+      return { weeks: [], thisWeek: null, lastWeek: 0, loading: true, error: null };
+    });
+    useEffect(() => {
+      fetch(`/api/jobber-data?action=${action}`, { cache: 'no-store' })
+        .then((r) => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
+        .then((d) => {
+          const next = { weeks: d.weeks || [], thisWeek: d.thisWeek, lastWeek: d.lastWeek };
+          setState({ ...next, loading: false, error: null });
+          try {
+            // Cache without items[] to keep localStorage tiny; items refetch on every load.
+            const slim = { ...next, weeks: next.weeks.map(({ items, ...w }) => w) };
+            localStorage.setItem(cacheKey, JSON.stringify(slim));
+          } catch { /* ignore */ }
+        })
+        .catch((err) => setState((prev) => ({ ...prev, loading: false, error: prev.weeks.length ? null : err.message })));
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+    return state;
+  };
+  const requestsData = useWeeklyHistory('requests-history', 'boost-requests-history-cache');
+  const quotesData = useWeeklyHistory('quotes-history', 'boost-quotes-history-cache');
+  const bookedData = useWeeklyHistory('booked-history', 'boost-booked-history-cache');
+
+  // Route goal — target number of recurring clients to fill the route.
+  const ROUTE_GOAL = 100;
 
   return (
     <div className="pb-16 space-y-6 sm:space-y-8">
-      {/* Top stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
-        <StatCard
-          icon={Users}
-          label="Recurring Clients"
-          value={recurring.loading ? '—' : recurring.error ? '?' : recurring.clients}
-          subtle={recurring.error ? 'Could not load (Jobber)' : recurring.loading ? 'Loading from Jobber…' : 'Active recurring lawn route'}
-          accent
-        />
-        <StatCard
-          icon={DollarSign}
-          label="Monthly Recurring Revenue"
-          value={recurring.loading ? '—' : recurring.error ? '?' : money(recurring.monthly)}
-          subtle={recurring.error ? null : recurring.loading ? 'Loading…' : 'From recurring lawn maintenance'}
-          accent
-        />
-      </div>
+      {/* Goal: fill the route */}
+      <RouteGoalBanner
+        clients={recurring.clients}
+        goal={ROUTE_GOAL}
+        monthly={recurring.monthly}
+        loading={recurring.loading}
+        onClick={() => navigate('/insights/clients')}
+      />
 
-      {/* Plan */}
-      <Planner todos={ownerTodos} setTodos={setOwnerTodos} />
-
-      {/* Checklists */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-5">
-        <ChecklistCard
-          kind="start"
-          title="Start of Day"
-          icon={Sun}
-          items={ownerStartChecklist}
-          setItems={setOwnerStartChecklist}
-          completedCount={startDone}
-          totalCount={startCheckable.length}
-          onResetAll={resetStart}
-          onEdit={() => setEditing('start')}
-        />
-        <ChecklistCard
-          kind="end"
-          title="End of Day"
-          icon={Moon}
-          items={ownerEndChecklist}
-          setItems={setOwnerEndChecklist}
-          completedCount={endDone}
-          totalCount={endCheckable.length}
-          onResetAll={resetEnd}
-          onEdit={() => setEditing('end')}
-        />
+      {/* The Funnel — top to bottom: attention → selling → winning → money */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-xs font-black uppercase tracking-[0.18em] text-tertiary">The Funnel — This Week</h2>
+          <p className="text-xs font-bold text-tertiary hidden sm:block">Requests → Quotes → Booked</p>
+        </div>
+        <div className="space-y-4">
+          <WeeklyHistoryCard data={requestsData} icon={Inbox}    label="Requests"        unitSingular="request" unitPlural="requests" />
+          <WeeklyHistoryCard data={quotesData}   icon={FileText} label="Quotes Sent"     unitSingular="quote"   unitPlural="quotes"   showAmount />
+          <WeeklyHistoryCard data={bookedData}   icon={Briefcase} label="New Recurring Clients" unitSingular="client" unitPlural="clients" showAmount />
+        </div>
       </div>
 
       {editing && (
@@ -914,6 +1103,7 @@ export default function OwnerHome() {
             items={editing === 'start' ? ownerStartChecklist : ownerEndChecklist}
             setItems={editing === 'start' ? setOwnerStartChecklist : setOwnerEndChecklist}
             title={editing === 'start' ? 'Edit Start of Day' : 'Edit End of Day'}
+            kind={editing}
           />
         </Suspense>
       )}

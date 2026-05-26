@@ -707,6 +707,7 @@ export const initialOwnerEndChecklist = [
   { id: 'ed-2', text: 'Review [Jobber Home](https://secure.getjobber.com/schedule/month/2026/1/17?unscheduled=off&map=hidden&nav_label=Schedule&nav_source=sidebar&displayMode=full&assignees=MjM3NjQwMw%3D%3D) and update accordingly', type: 'item', indent: 0, done: false },
   { id: 'ed-3', text: 'Open [Sales Pipeline](https://app.gohighlevel.com/v2/location/Umlo2UnfqbijiGqNU6g2/opportunities/list) and follow up', type: 'item', indent: 0, done: false },
   { id: 'ed-h2', text: 'Invoices, Payments, Mileage, Expenses', type: 'header', indent: 0, done: false },
+  { id: 'ed-payroll', text: 'Run payroll — verify all timesheets for the week', type: 'item', indent: 0, done: false, days: ['Sat'], links: [{ id: 'ed-payroll-l1', label: 'Open Timesheets', url: '/timesheets' }] },
   { id: 'ed-4', text: '[Send invoices](https://secure.getjobber.com/schedule/month/2026/1/25?unscheduled=off&map=hidden&nav_label=Schedule&nav_source=sidebar&displayMode=full&assignees=unassigned&assignees=MzY1MTY5MA%3D%3D&appointmentTypes=Visit)', type: 'item', indent: 0, done: false },
   { id: 'ed-5', text: 'Track mileage', type: 'item', indent: 0, done: false, action: 'log-mileage' },
   { id: 'ed-6', text: 'Review [Account](https://qbo.intuit.com/app/banking?jobId=accounting) \u2014 All dates > This Year > Apply', type: 'item', indent: 0, done: false },

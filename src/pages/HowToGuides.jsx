@@ -148,7 +148,7 @@ export default function HowToGuides({ ownerMode, allowedPlaybooks }) {
                   <Card
                     key={item.id}
                     item={item}
-                    onClick={() => navigate(`/guides/${item.id}`, { state: { tab: tab.key } })}
+                    onClick={() => navigate(`/playbooks/${item.id}`, { state: { tab: tab.key } })}
                     onEdit={setEditing}
                     onDelete={handleDelete}
                     ownerMode={ownerMode}

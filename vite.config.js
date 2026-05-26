@@ -39,8 +39,8 @@ export default defineConfig({
         cleanupOutdatedCaches: true,
       },
       manifest: {
-        name: "Hey Jude's Lawn Care",
-        short_name: 'LawnCare',
+        name: "Boost",
+        short_name: 'Boost',
         start_url: '/',
         display: 'standalone',
         theme_color: '#000000',

@@ -510,7 +510,7 @@ export default function Home() {
     <div className="grid grid-cols-2 gap-3">
       {[
         { label: 'Jobber', icon: ChevronRight, color: 'blue', action: () => window.open('jobber://', '_blank') },
-        { label: 'Playbooks', icon: BookOpen, color: 'purple', action: () => navigate('/guides') },
+        { label: 'Playbooks', icon: BookOpen, color: 'purple', action: () => navigate('/playbooks') },
         { label: 'Mileage', icon: Gauge, color: 'emerald', action: () => setShowMileageModal(true) },
         { label: 'Receipts', icon: Receipt, color: 'violet', action: () => setShowReceiptModal(true) },
         { label: 'Report Repair', icon: Wrench, color: 'orange', action: () => setShowRepairModal(true) },
