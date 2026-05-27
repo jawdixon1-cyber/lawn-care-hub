@@ -96,6 +96,7 @@ const ApplicantOnboarding = lazy(() => import('./pages/ApplicantOnboarding'));
 const Insights = lazy(() => import('./pages/Insights'));
 const InsightsRecurringClients = lazy(() => import('./pages/Insights').then(m => ({ default: m.RecurringClientsReport })));
 const InsightsProfitability = lazy(() => import('./pages/InsightsProfitability'));
+const InsightsDoorHangers = lazy(() => import('./pages/InsightsDoorHangers'));
 
 const NAV_ITEMS = [
   { id: 'home', path: '/', label: 'Home', icon: HomeIcon },
@@ -518,16 +519,32 @@ function AppShell() {
   const permissions = useAppStore((s) => s.permissions);
   const ownerStartChecklist = useAppStore((s) => s.ownerStartChecklist) || [];
   const ownerEndChecklist = useAppStore((s) => s.ownerEndChecklist) || [];
+  const teamChecklist = useAppStore((s) => s.teamChecklist) || [];
+  const teamEndChecklist = useAppStore((s) => s.teamEndChecklist) || [];
   const dailyProgress = (() => {
     const DAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][new Date().getDay()];
     const isForToday = (i) => i.type !== 'header' && (!i.days || i.days.length === 0 || i.days.includes(DAY));
     const startToday = ownerStartChecklist.filter(isForToday);
     const endToday = ownerEndChecklist.filter(isForToday);
+    // Per-user team done state from localStorage (matches ChecklistWorkflow logic).
+    const today = new Date().toLocaleDateString('en-CA');
+    const userEmailLc = (user?.email || 'anon').toLowerCase();
+    const readTeamDone = (k) => {
+      try { return JSON.parse(localStorage.getItem(`boost-team-done-${userEmailLc}-${k}-${today}`) || '{}'); } catch { return {}; }
+    };
+    const teamStartDone = readTeamDone('team-start');
+    const teamEndDone = readTeamDone('team-end');
+    const teamStartToday = teamChecklist.filter(isForToday);
+    const teamEndToday = teamEndChecklist.filter(isForToday);
     return {
       startDone: startToday.filter((i) => i.done).length,
       startTotal: startToday.length,
       endDone: endToday.filter((i) => i.done).length,
       endTotal: endToday.length,
+      teamStartDone: teamStartToday.filter((i) => teamStartDone[i.id]).length,
+      teamStartTotal: teamStartToday.length,
+      teamEndDone: teamEndToday.filter((i) => teamEndDone[i.id]).length,
+      teamEndTotal: teamEndToday.length,
     };
   })();
   const userEmail = user?.email?.toLowerCase();
@@ -659,6 +676,55 @@ function AppShell() {
         );
       })}
 
+      {/* Team Daily — single combined "Today" workflow for non-owners */}
+      {!ownerMode && (
+        <>
+          <div className="h-px bg-border-subtle my-3 mx-2" />
+          {!collapsed && <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted">Daily</p>}
+          {[
+            { id: 't-today', path: '/workflow/team-today', label: 'Today',
+              icon: Sunrise,
+              done: dailyProgress.teamStartDone + dailyProgress.teamEndDone,
+              total: dailyProgress.teamStartTotal + dailyProgress.teamEndTotal },
+          ].map((item) => {
+            const Icon = item.icon;
+            const active = isActive(item.path);
+            const allDone = item.total > 0 && item.done === item.total;
+            return (
+              <button key={item.id} onClick={() => handleNav(item.path)} title={collapsed ? `${item.label} ${item.done}/${item.total}` : undefined}
+                className={`w-full flex items-center gap-3 ${collapsed ? 'justify-center px-2' : 'px-3'} py-2.5 rounded-xl text-sm font-medium transition-colors ${
+                  active ? 'bg-brand-light text-brand-text-strong' : 'text-secondary hover:bg-surface-alt hover:text-primary cursor-pointer'
+                }`}>
+                <Icon size={20} className="shrink-0" />
+                {!collapsed && (
+                  <>
+                    <span className="truncate flex-1 text-left">{item.label}</span>
+                    <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${allDone ? 'bg-emerald-100 text-emerald-700' : 'bg-surface-alt text-tertiary'}`}>
+                      {item.done}/{item.total}
+                    </span>
+                  </>
+                )}
+              </button>
+            );
+          })}
+        </>
+      )}
+
+      {/* Non-owner Print Marketing — only if owner has granted access */}
+      {!ownerMode && permissions[userEmail]?.tools?.doorHangers && (
+        <>
+          <div className="h-px bg-border-subtle my-3 mx-2" />
+          {!collapsed && <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted inline-flex items-center gap-1.5"><Printer size={11} /> Print Marketing</p>}
+          <button onClick={() => handleNav('/print/hangers')} title={collapsed ? 'Door Hangers' : undefined}
+            className={`w-full flex items-center gap-3 ${collapsed ? 'justify-center px-2' : 'px-3 pl-6'} py-2.5 rounded-xl text-sm font-medium transition-colors ${
+              isActive('/print/hangers') ? 'bg-brand-light text-brand-text-strong' : 'text-secondary hover:bg-surface-alt hover:text-primary cursor-pointer'
+            }`}>
+            <DoorOpen size={18} className="shrink-0" />
+            {!collapsed && <span className="truncate">Door Hangers</span>}
+          </button>
+        </>
+      )}
+
       {/* Team Tools — for non-owners, show directly */}
       {!ownerMode && (
         <>
@@ -687,6 +753,9 @@ function AppShell() {
           {[
             { id: 'sod', path: '/workflow/start', label: 'Start of Day', icon: Sunrise, done: dailyProgress.startDone, total: dailyProgress.startTotal },
             { id: 'eod', path: '/workflow/end',   label: 'End of Day',   icon: Sunset,  done: dailyProgress.endDone,   total: dailyProgress.endTotal   },
+            { id: 't-today', path: '/workflow/team-today', label: 'Team Today', icon: Sunrise,
+              done: dailyProgress.teamStartDone + dailyProgress.teamEndDone,
+              total: dailyProgress.teamStartTotal + dailyProgress.teamEndTotal },
           ].map((item) => {
             const Icon = item.icon;
             const active = isActive(item.path);
@@ -956,6 +1025,7 @@ function AppShell() {
                 <Route path="/insights/leads" element={<Marketing />} />
                 <Route path="/insights/profitability" element={<LaborEfficiency />} />
                 <Route path="/insights/profitability-full" element={<InsightsProfitability />} />
+                <Route path="/insights/door-hangers" element={<InsightsDoorHangers />} />
                 {/* Redirects for old routes */}
                 <Route path="/commander" element={<Navigate to="/sales" replace />} />
                 <Route path="/pipeline" element={<Navigate to="/sales" replace />} />

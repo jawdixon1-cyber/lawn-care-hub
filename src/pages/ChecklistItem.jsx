@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, Check, Plus, Trash2, Save, ExternalLink, Link2 } from 'lucide-react';
+import { ArrowLeft, Check, Plus, Trash2, Save, ExternalLink, Link2, Pencil, ChevronUp, ChevronDown } from 'lucide-react';
 import { useAppStore } from '../store/AppStoreContext';
 
 const STORAGE_KEY = 'greenteam-checklist-details';
@@ -57,6 +57,192 @@ function EditableItemTitle({ value, onSave }) {
   );
 }
 
+// Inline-editable link chip. Click the chip to flip into edit mode (label + url inputs).
+function EditableLinkChip({ link, onSave, onRemove }) {
+  const [editing, setEditing] = useState(false);
+  const [label, setLabel] = useState(link.label);
+  const [url, setUrl] = useState(link.url);
+  useEffect(() => { setLabel(link.label); setUrl(link.url); }, [link.label, link.url]);
+  const save = () => {
+    setEditing(false);
+    const safeUrl = url.trim() && !/^https?:\/\//.test(url) && !url.startsWith('/') ? `https://${url.trim()}` : url.trim();
+    const patch = {};
+    if (label.trim() && label.trim() !== link.label) patch.label = label.trim();
+    if (safeUrl && safeUrl !== link.url) patch.url = safeUrl;
+    if (Object.keys(patch).length > 0) onSave(patch);
+  };
+  if (editing) {
+    return (
+      <div className="inline-flex items-center gap-1 bg-brand/10 rounded-xl pl-2 pr-1 py-1">
+        <input
+          autoFocus
+          value={label}
+          onChange={(e) => setLabel(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') save(); if (e.key === 'Escape') { setLabel(link.label); setUrl(link.url); setEditing(false); } }}
+          placeholder="Label"
+          className="w-20 bg-transparent outline-none text-xs font-black text-brand"
+        />
+        <span className="text-xs text-tertiary">·</span>
+        <input
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') save(); if (e.key === 'Escape') { setLabel(link.label); setUrl(link.url); setEditing(false); } }}
+          placeholder="https://..."
+          className="w-40 bg-transparent outline-none text-xs font-medium text-primary"
+        />
+        <button onClick={save} className="text-xs font-black text-brand px-1.5 py-0.5 rounded hover:bg-brand/20 cursor-pointer">save</button>
+      </div>
+    );
+  }
+  const isInternal = link.url?.startsWith('/');
+  const openUrl = (e) => {
+    e.preventDefault();
+    if (isInternal) window.location.assign(link.url);
+    else window.open(link.url, '_blank', 'noopener,noreferrer');
+  };
+  return (
+    <div className="group/link inline-flex items-center gap-1.5 text-xs font-black text-brand bg-brand/10 hover:bg-brand/15 pl-2.5 pr-1 py-1 rounded-xl">
+      <button onClick={openUrl} className="inline-flex items-center gap-1 cursor-pointer" title="Open link">
+        <ExternalLink size={11} /> {link.label}
+      </button>
+      <button onClick={() => setEditing(true)} className="opacity-0 group-hover/link:opacity-100 text-muted hover:text-primary cursor-pointer p-1 rounded transition-opacity" title="Edit link">
+        <Pencil size={10} />
+      </button>
+      <button onClick={onRemove} className="opacity-0 group-hover/link:opacity-100 text-muted hover:text-red-400 cursor-pointer p-1 rounded transition-opacity" title="Remove link">
+        <Trash2 size={10} />
+      </button>
+    </div>
+  );
+}
+
+function SubItemRow({ sub, onToggle, onRemove, onAddLink, onRemoveLink, onEditText, onEditLink, onMoveUp, onMoveDown }) {
+  const [adding, setAdding] = useState(false);
+  const [linkLabel, setLinkLabel] = useState('');
+  const [linkUrl, setLinkUrl] = useState('');
+  const [editingText, setEditingText] = useState(false);
+  const [textDraft, setTextDraft] = useState(sub.text);
+  useEffect(() => { setTextDraft(sub.text); }, [sub.text]);
+  const save = () => {
+    if (!linkUrl.trim()) return;
+    onAddLink(linkLabel, linkUrl);
+    setLinkLabel(''); setLinkUrl(''); setAdding(false);
+  };
+  const saveText = () => {
+    const t = textDraft.trim();
+    setEditingText(false);
+    if (t && t !== sub.text) onEditText(t);
+    else setTextDraft(sub.text);
+  };
+  return (
+    <div className={`rounded-2xl px-3 py-2.5 group ${sub.done ? 'bg-emerald-500/8' : 'hover:bg-surface-alt'}`}>
+      <div className="flex items-start gap-3">
+        <button
+          onClick={onToggle}
+          className={`mt-0.5 w-6 h-6 rounded-lg flex items-center justify-center shrink-0 cursor-pointer ${
+            sub.done ? 'bg-emerald-400 text-emerald-950' : 'border-2 border-card-border bg-surface-alt'
+          }`}
+        >
+          {sub.done && <Check size={14} strokeWidth={3.5} />}
+        </button>
+        {editingText ? (
+          <input
+            autoFocus
+            value={textDraft}
+            onChange={(e) => setTextDraft(e.target.value)}
+            onBlur={saveText}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') e.currentTarget.blur();
+              if (e.key === 'Escape') { setTextDraft(sub.text); setEditingText(false); }
+            }}
+            className="flex-1 bg-transparent outline-none text-sm sm:text-base font-bold text-primary border-b-2 border-primary"
+          />
+        ) : (
+          <span
+            onClick={() => setEditingText(true)}
+            className={`flex-1 text-sm sm:text-base font-bold cursor-text ${sub.done ? 'text-muted line-through' : 'text-primary'}`}
+            title="Tap to edit"
+          >
+            {sub.text}
+          </span>
+        )}
+        <div className="flex flex-col shrink-0">
+          <button
+            onClick={onMoveUp}
+            disabled={!onMoveUp}
+            className="p-0.5 text-muted/50 hover:text-primary cursor-pointer disabled:opacity-20 disabled:cursor-not-allowed"
+            title="Move up"
+          >
+            <ChevronUp size={13} />
+          </button>
+          <button
+            onClick={onMoveDown}
+            disabled={!onMoveDown}
+            className="p-0.5 text-muted/50 hover:text-primary cursor-pointer disabled:opacity-20 disabled:cursor-not-allowed"
+            title="Move down"
+          >
+            <ChevronDown size={13} />
+          </button>
+        </div>
+        <button
+          onClick={() => setAdding((v) => !v)}
+          className="opacity-0 group-hover:opacity-100 text-muted hover:text-brand cursor-pointer p-1 transition-opacity"
+          title={adding ? 'Cancel' : 'Add link'}
+        >
+          <Link2 size={14} />
+        </button>
+        <button
+          onClick={onRemove}
+          className="opacity-0 group-hover:opacity-100 text-muted hover:text-red-400 cursor-pointer p-1 transition-opacity"
+          title="Remove"
+        >
+          <Trash2 size={14} />
+        </button>
+      </div>
+
+      {/* Existing links chips */}
+      {sub.links && sub.links.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 ml-9 mt-2">
+          {sub.links.map((l) => (
+            <EditableLinkChip
+              key={l.id}
+              link={l}
+              onSave={(patch) => onEditLink(l.id, patch)}
+              onRemove={() => onRemoveLink(l.id)}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Inline add-link form */}
+      {adding && (
+        <div className="ml-9 mt-2 flex flex-col sm:flex-row gap-2">
+          <input
+            value={linkLabel}
+            onChange={(e) => setLinkLabel(e.target.value)}
+            placeholder="Label (optional)"
+            className="sm:w-32 rounded-xl bg-surface-alt border border-card-border px-3 py-2 text-xs font-medium text-primary placeholder:text-muted focus:outline-none focus:border-brand"
+          />
+          <input
+            autoFocus
+            value={linkUrl}
+            onChange={(e) => setLinkUrl(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') save(); if (e.key === 'Escape') setAdding(false); }}
+            placeholder="https://..."
+            className="flex-1 rounded-xl bg-surface-alt border border-card-border px-3 py-2 text-xs font-medium text-primary placeholder:text-muted focus:outline-none focus:border-brand"
+          />
+          <button
+            onClick={save}
+            disabled={!linkUrl.trim()}
+            className="inline-flex items-center gap-1 px-3 py-2 rounded-xl bg-brand text-black font-black text-xs disabled:opacity-40 cursor-pointer"
+          >
+            <Plus size={12} /> Add
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ChecklistItem() {
   const { kind, itemId } = useParams();
   const navigate = useNavigate();
@@ -65,8 +251,22 @@ export default function ChecklistItem() {
   const setOwnerStartChecklist = useAppStore((s) => s.setOwnerStartChecklist);
   const ownerEndChecklist = useAppStore((s) => s.ownerEndChecklist);
   const setOwnerEndChecklist = useAppStore((s) => s.setOwnerEndChecklist);
-  const list = kind === 'end' ? ownerEndChecklist : ownerStartChecklist;
-  const setList = kind === 'end' ? setOwnerEndChecklist : setOwnerStartChecklist;
+  const teamChecklist = useAppStore((s) => s.teamChecklist);
+  const setTeamChecklist = useAppStore((s) => s.setTeamChecklist);
+  const teamEndChecklist = useAppStore((s) => s.teamEndChecklist);
+  const setTeamEndChecklist = useAppStore((s) => s.setTeamEndChecklist);
+  const list = (
+    kind === 'team-start' ? teamChecklist
+    : kind === 'team-end' ? teamEndChecklist
+    : kind === 'end' ? ownerEndChecklist
+    : ownerStartChecklist
+  );
+  const setList = (
+    kind === 'team-start' ? setTeamChecklist
+    : kind === 'team-end' ? setTeamEndChecklist
+    : kind === 'end' ? setOwnerEndChecklist
+    : setOwnerStartChecklist
+  );
   const item = useMemo(() => list.find((i) => i.id === itemId), [list, itemId]);
 
   const itemDays = item?.days || [];
@@ -122,6 +322,22 @@ export default function ChecklistItem() {
   };
   const toggleSub = (id) => setSubItems((arr) => arr.map((s) => s.id === id ? { ...s, done: !s.done } : s));
   const removeSub = (id) => setSubItems((arr) => arr.filter((s) => s.id !== id));
+  const addSubLink = (subId, label, url) => {
+    const u = url.trim();
+    if (!u) return;
+    const safeUrl = /^https?:\/\//.test(u) || u.startsWith('/') ? u : `https://${u}`;
+    const finalLabel = label.trim() || safeUrl.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+    setSubItems((arr) => arr.map((s) => s.id === subId
+      ? { ...s, links: [...(s.links || []), { id: uid(), label: finalLabel, url: safeUrl }] }
+      : s
+    ));
+  };
+  const removeSubLink = (subId, linkId) => {
+    setSubItems((arr) => arr.map((s) => s.id === subId
+      ? { ...s, links: (s.links || []).filter((l) => l.id !== linkId) }
+      : s
+    ));
+  };
   const resetSubs = () => setSubItems((arr) => arr.map((s) => ({ ...s, done: false })));
 
   const addLink = () => {
@@ -133,6 +349,19 @@ export default function ChecklistItem() {
     setLinkLabel(''); setLinkUrl('');
   };
   const removeLink = (id) => setLinks((arr) => arr.filter((l) => l.id !== id));
+  const updateLink = (id, patch) => setLinks((arr) => arr.map((l) => l.id === id ? { ...l, ...patch } : l));
+  const updateSub = (id, text) => setSubItems((arr) => arr.map((s) => s.id === id ? { ...s, text } : s));
+  const moveSub = (id, delta) => setSubItems((arr) => {
+    const idx = arr.findIndex((s) => s.id === id);
+    const target = idx + delta;
+    if (idx < 0 || target < 0 || target >= arr.length) return arr;
+    const next = [...arr];
+    [next[idx], next[target]] = [next[target], next[idx]];
+    return next;
+  });
+  const updateSubLink = (subId, linkId, patch) => setSubItems((arr) => arr.map((s) =>
+    s.id === subId ? { ...s, links: (s.links || []).map((l) => l.id === linkId ? { ...l, ...patch } : l) } : s
+  ));
 
   const done = subItems.filter((s) => s.done).length;
   const total = subItems.length;
@@ -211,6 +440,67 @@ export default function ChecklistItem() {
         </p>
       </section>
 
+      {/* Sub-checklist — moved above SOP so the actionable list comes first */}
+      <section className="rounded-3xl border border-card-border bg-card p-5 sm:p-6 mb-5">
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <h2 className="text-lg font-black text-primary">Sub-Checklist</h2>
+            <p className="text-xs font-bold text-muted mt-0.5">{done} of {total} done &middot; {pct}%</p>
+          </div>
+          {done > 0 && (
+            <button
+              onClick={resetSubs}
+              className="text-xs font-bold text-muted hover:text-primary px-2 py-1.5 rounded-lg hover:bg-surface-alt cursor-pointer"
+            >
+              Reset
+            </button>
+          )}
+        </div>
+
+        {total > 0 && (
+          <div className="h-2 rounded-full bg-surface-alt overflow-hidden mb-4">
+            <div className="h-full bg-brand transition-all duration-500" style={{ width: `${pct}%` }} />
+          </div>
+        )}
+
+        <div className="space-y-1.5 mb-4">
+          {subItems.length === 0 && (
+            <p className="text-sm text-muted py-4 text-center">No sub-items yet. Add steps below.</p>
+          )}
+          {subItems.map((s, i) => (
+            <SubItemRow
+              key={s.id}
+              sub={s}
+              onToggle={() => toggleSub(s.id)}
+              onRemove={() => removeSub(s.id)}
+              onAddLink={(label, url) => addSubLink(s.id, label, url)}
+              onRemoveLink={(linkId) => removeSubLink(s.id, linkId)}
+              onEditText={(t) => updateSub(s.id, t)}
+              onEditLink={(linkId, patch) => updateSubLink(s.id, linkId, patch)}
+              onMoveUp={i > 0 ? () => moveSub(s.id, -1) : null}
+              onMoveDown={i < subItems.length - 1 ? () => moveSub(s.id, 1) : null}
+            />
+          ))}
+        </div>
+
+        <div className="flex gap-2">
+          <input
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') addSub(); }}
+            placeholder="Add a step..."
+            className="flex-1 rounded-2xl bg-surface-alt border border-card-border px-4 py-3 text-base font-medium text-primary placeholder:text-muted focus:outline-none focus:border-brand"
+          />
+          <button
+            onClick={addSub}
+            disabled={!draft.trim()}
+            className="inline-flex items-center gap-1 px-4 py-3 rounded-2xl bg-brand text-black font-black disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+          >
+            <Plus size={16} /> Add
+          </button>
+        </div>
+      </section>
+
       {/* SOP Editor */}
       <section className="rounded-3xl border border-card-border bg-card p-5 sm:p-6 mb-5">
         <div className="flex items-center justify-between mb-3">
@@ -241,14 +531,12 @@ export default function ChecklistItem() {
         {links.length > 0 && (
           <div className="flex flex-wrap gap-2 mb-4">
             {links.map((l) => (
-              <div key={l.id} className="group inline-flex items-center gap-2 rounded-2xl bg-brand/10 hover:bg-brand/15 pl-3 pr-1 py-1.5">
-                <a href={l.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-sm font-black text-brand">
-                  <ExternalLink size={12} /> {l.label}
-                </a>
-                <button onClick={() => removeLink(l.id)} className="opacity-0 group-hover:opacity-100 text-muted hover:text-red-400 cursor-pointer p-1.5 rounded-lg transition-opacity" title="Remove">
-                  <Trash2 size={12} />
-                </button>
-              </div>
+              <EditableLinkChip
+                key={l.id}
+                link={l}
+                onSave={(patch) => updateLink(l.id, patch)}
+                onRemove={() => removeLink(l.id)}
+              />
             ))}
           </div>
         )}
@@ -277,84 +565,6 @@ export default function ChecklistItem() {
         </div>
       </section>
 
-      {/* Sub-checklist */}
-      <section className="rounded-3xl border border-card-border bg-card p-5 sm:p-6">
-        <div className="flex items-center justify-between mb-3">
-          <div>
-            <h2 className="text-lg font-black text-primary">Sub-Checklist</h2>
-            <p className="text-xs font-bold text-muted mt-0.5">{done} of {total} done &middot; {pct}%</p>
-          </div>
-          {done > 0 && (
-            <button
-              onClick={resetSubs}
-              className="text-xs font-bold text-muted hover:text-primary px-2 py-1.5 rounded-lg hover:bg-surface-alt cursor-pointer"
-            >
-              Reset
-            </button>
-          )}
-        </div>
-
-        {total > 0 && (
-          <div className="h-2 rounded-full bg-surface-alt overflow-hidden mb-4">
-            <div className="h-full bg-brand transition-all duration-500" style={{ width: `${pct}%` }} />
-          </div>
-        )}
-
-        <div className="space-y-1.5 mb-4">
-          {subItems.length === 0 && (
-            <p className="text-sm text-muted py-4 text-center">No sub-items yet. Add steps below.</p>
-          )}
-          {subItems.map((s) => (
-            <div
-              key={s.id}
-              className={`flex items-start gap-3 rounded-2xl px-3 py-3 group ${
-                s.done ? 'bg-emerald-500/8' : 'hover:bg-surface-alt'
-              }`}
-            >
-              <button
-                onClick={() => toggleSub(s.id)}
-                className={`mt-0.5 w-6 h-6 rounded-lg flex items-center justify-center shrink-0 cursor-pointer ${
-                  s.done
-                    ? 'bg-emerald-400 text-emerald-950'
-                    : 'border-2 border-card-border bg-surface-alt'
-                }`}
-              >
-                {s.done && <Check size={14} strokeWidth={3.5} />}
-              </button>
-              <span
-                onClick={() => toggleSub(s.id)}
-                className={`flex-1 text-sm sm:text-base font-bold cursor-pointer ${s.done ? 'text-muted line-through' : 'text-primary'}`}
-              >
-                {s.text}
-              </span>
-              <button
-                onClick={() => removeSub(s.id)}
-                className="opacity-0 group-hover:opacity-100 text-muted hover:text-red-400 cursor-pointer p-1 transition-opacity"
-                title="Remove"
-              >
-                <Trash2 size={14} />
-              </button>
-            </div>
-          ))}
-        </div>
-
-        <div className="flex gap-2">
-          <input
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') addSub(); }}
-            placeholder="Add a step..."
-            className="flex-1 rounded-2xl bg-surface-alt border border-card-border px-4 py-3 text-base font-medium text-primary placeholder:text-muted focus:outline-none focus:border-brand"
-          />
-          <button
-            onClick={addSub}
-            disabled={!draft.trim()}
-            className="inline-flex items-center gap-1 px-4 py-3 rounded-2xl bg-brand text-black font-black disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-          >
-            <Plus size={16} /> Add
-          </button>
-        </div>
-      </section>
     </div>
   );
 }

@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState, lazy, Suspense } from 'react';
+import { useEffect, useMemo, useState, lazy, Suspense, Fragment } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, Check, ExternalLink, CheckCircle2, RotateCcw, Pencil } from 'lucide-react';
 import { useAppStore } from '../store/AppStoreContext';
+import { useAuth } from '../contexts/AuthContext';
 
 const WeatherStep = lazy(() => import('../components/WeatherStep'));
 const ChecklistEditorModal = lazy(() => import('../components/ChecklistEditorModal'));
@@ -95,12 +96,97 @@ export default function ChecklistWorkflow() {
   const setOwnerStartChecklist = useAppStore((s) => s.setOwnerStartChecklist);
   const ownerEndChecklist = useAppStore((s) => s.ownerEndChecklist);
   const setOwnerEndChecklist = useAppStore((s) => s.setOwnerEndChecklist);
+  const teamChecklist = useAppStore((s) => s.teamChecklist);
+  const setTeamChecklist = useAppStore((s) => s.setTeamChecklist);
+  const teamEndChecklist = useAppStore((s) => s.teamEndChecklist);
+  const setTeamEndChecklist = useAppStore((s) => s.setTeamEndChecklist);
+  const { user } = useAuth();
+  const userEmail = (user?.email || 'anon').toLowerCase();
 
-  const list = kind === 'end' ? ownerEndChecklist : ownerStartChecklist;
-  const setList = kind === 'end' ? setOwnerEndChecklist : setOwnerStartChecklist;
+  // Owner ('start', 'end') uses shared done state on the list itself.
+  // Team ('team-start', 'team-end', 'team-today') uses per-user done state
+  // in localStorage. 'team-today' is a virtual combined view of Open + Close.
+  const isTeam = kind === 'team-start' || kind === 'team-end' || kind === 'team-today';
+  const isCombined = kind === 'team-today';
 
-  // Only step through actual items (not headers), and only those scheduled for today
-  const steps = useMemo(() => list.filter((i) => i.type !== 'header' && isItemForToday(i)), [list]);
+  // For combined view, tag each item with which underlying list it lives in
+  // so writes dispatch to the right place.
+  const list = (() => {
+    if (isCombined) {
+      return [
+        ...teamChecklist.map((i) => ({ ...i, __section: 'open' })),
+        ...teamEndChecklist.map((i) => ({ ...i, __section: 'close' })),
+      ];
+    }
+    if (kind === 'team-start') return teamChecklist;
+    if (kind === 'team-end') return teamEndChecklist;
+    if (kind === 'end') return ownerEndChecklist;
+    return ownerStartChecklist;
+  })();
+
+  // setList for combined view dispatches to the correct underlying setter
+  // based on each item's __section tag. For single-source views, set directly.
+  const setList = (newList) => {
+    if (!isCombined) {
+      const direct = (
+        kind === 'team-start' ? setTeamChecklist
+        : kind === 'team-end' ? setTeamEndChecklist
+        : kind === 'end' ? setOwnerEndChecklist
+        : setOwnerStartChecklist
+      );
+      return direct(newList);
+    }
+    // Split combined list back into the two underlying lists.
+    const stripTag = ({ __section, ...rest }) => rest;
+    setTeamChecklist(newList.filter((i) => i.__section === 'open').map(stripTag));
+    setTeamEndChecklist(newList.filter((i) => i.__section === 'close').map(stripTag));
+  };
+
+  // Per-user team done state — keyed by user+section+date so it resets each day.
+  // Combined view reads/writes both 'team-start' and 'team-end' maps.
+  const today = new Date().toLocaleDateString('en-CA');
+  const openKey  = `boost-team-done-${userEmail}-team-start-${today}`;
+  const closeKey = `boost-team-done-${userEmail}-team-end-${today}`;
+  const [teamDoneMap, setTeamDoneMap] = useState(() => {
+    if (!isTeam) return {};
+    try {
+      if (isCombined) {
+        const open = JSON.parse(localStorage.getItem(openKey) || '{}');
+        const close = JSON.parse(localStorage.getItem(closeKey) || '{}');
+        return { ...open, ...close };
+      }
+      const k = kind === 'team-end' ? closeKey : openKey;
+      return JSON.parse(localStorage.getItem(k) || '{}');
+    } catch { return {}; }
+  });
+  // Persist done state to the correct localStorage key(s).
+  useEffect(() => {
+    if (!isTeam) return;
+    try {
+      if (isCombined) {
+        const openIds = new Set(teamChecklist.map((i) => i.id));
+        const closeIds = new Set(teamEndChecklist.map((i) => i.id));
+        const openMap = {}, closeMap = {};
+        for (const [id, v] of Object.entries(teamDoneMap)) {
+          if (openIds.has(id)) openMap[id] = v;
+          else if (closeIds.has(id)) closeMap[id] = v;
+        }
+        localStorage.setItem(openKey, JSON.stringify(openMap));
+        localStorage.setItem(closeKey, JSON.stringify(closeMap));
+      } else {
+        const k = kind === 'team-end' ? closeKey : openKey;
+        localStorage.setItem(k, JSON.stringify(teamDoneMap));
+      }
+    } catch { /* ignore */ }
+  }, [openKey, closeKey, teamDoneMap, isTeam, isCombined, kind, teamChecklist, teamEndChecklist]);
+
+  // Only step through actual items (not headers), and only those scheduled for today.
+  // For team kinds, overlay per-user done state from localStorage.
+  const steps = useMemo(() => {
+    const filtered = list.filter((i) => i.type !== 'header' && isItemForToday(i));
+    if (!isTeam) return filtered;
+    return filtered.map((i) => ({ ...i, done: !!teamDoneMap[i.id] }));
+  }, [list, isTeam, teamDoneMap]);
   const total = steps.length;
 
   // First undone real step index, or last step if all done.
@@ -157,7 +243,7 @@ export default function ChecklistWorkflow() {
           <CheckCircle2 size={48} strokeWidth={2.5} />
         </div>
         <h1 className="text-3xl font-black text-primary tracking-tight mb-2">
-          {kind === 'end' ? 'End of Day complete' : 'Start of Day complete'}
+          {kind === 'end' ? 'End of Day complete' : kind === 'team-start' ? 'Open complete' : kind === 'team-end' ? 'Close complete' : 'Start of Day complete'}
         </h1>
         <p className="text-base font-bold text-muted mb-8">
           Nice. {total} steps done. Go get it.
@@ -178,11 +264,14 @@ export default function ChecklistWorkflow() {
   const resetSubs = () => setSubItems((arr) => arr.map((s) => ({ ...s, done: false })));
 
   const markAndNext = () => {
-    // Mark this item done in the main list
-    setList(list.map((i) => i.id === item.id ? { ...i, done: true } : i));
-    // Reset sub-items for next time (so the next workflow run starts fresh)
+    if (isTeam) {
+      // Per-user team completion — only this user's localStorage updates.
+      setTeamDoneMap((m) => ({ ...m, [item.id]: true }));
+    } else {
+      // Owner mode: shared done state on the list itself.
+      setList(list.map((i) => i.id === item.id ? { ...i, done: true } : i));
+    }
     setSubItems((arr) => arr.map((s) => ({ ...s, done: false })));
-    // Advance
     navigate(`/workflow/${kind}/${idx + 1}`);
   };
 
@@ -197,14 +286,41 @@ export default function ChecklistWorkflow() {
     return plain.length > 30 ? plain.slice(0, 28) + '…' : plain || 'Step';
   };
 
+  // Section label for the current step (in combined view).
+  const sectionLabel = isCombined && item?.__section
+    ? (item.__section === 'open' ? '☀ Open' : '🌙 Close')
+    : null;
+
   return (
     <div className="px-4 sm:px-6 py-6 max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-6">
-      {/* Side stepper */}
-      <aside className="lg:sticky lg:top-4 lg:self-start">
+      {/* Mobile-only top progress bar — replaces the side stepper on small screens */}
+      <div className="lg:hidden">
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-muted">
+            {sectionLabel || (kind === 'end' ? 'End of Day' : kind === 'team-start' ? 'Open' : kind === 'team-end' ? 'Close' : kind === 'team-today' ? 'Today' : 'Start of Day')} · {idx + 1}/{total}
+          </p>
+          <button
+            onClick={() => setShowFullEditor(true)}
+            className="text-muted hover:text-primary p-1 rounded-lg hover:bg-surface-alt cursor-pointer"
+            title="Edit checklist"
+          >
+            <Pencil size={14} />
+          </button>
+        </div>
+        <div className="h-1.5 rounded-full bg-surface-alt overflow-hidden">
+          <div
+            className="h-full bg-primary transition-all duration-300"
+            style={{ width: `${total > 0 ? ((idx + 1) / total) * 100 : 0}%` }}
+          />
+        </div>
+      </div>
+
+      {/* Side stepper — desktop only */}
+      <aside className="hidden lg:block lg:sticky lg:top-4 lg:self-start">
         <div className="rounded-2xl border border-card-border bg-card p-3">
           <div className="flex items-center justify-between px-2 pt-1 pb-2">
             <p className="text-[10px] font-black uppercase tracking-[0.18em] text-muted">
-              {kind === 'end' ? 'End of Day' : 'Start of Day'} · {idx + 1}/{total}
+              {kind === 'end' ? 'End of Day' : kind === 'team-start' ? 'Open' : kind === 'team-end' ? 'Close' : kind === 'team-today' ? 'Today' : 'Start of Day'} · {idx + 1}/{total}
             </p>
             <button
               onClick={() => setShowFullEditor(true)}
@@ -218,9 +334,18 @@ export default function ChecklistWorkflow() {
             {steps.map((s, i) => {
               const active = i === idx;
               const done = s.done;
+              // Combined view: drop a divider when section flips from open → close.
+              const prev = steps[i - 1];
+              const showDivider = isCombined && prev && prev.__section !== s.__section;
+              const isFirstOfSection = isCombined && (!prev || prev.__section !== s.__section);
               return (
+                <Fragment key={s.id}>
+                  {(isCombined && (i === 0 || showDivider)) && (
+                    <p className="px-3 pt-3 pb-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-muted">
+                      {s.__section === 'open' ? '☀ Open' : '🌙 Close'}
+                    </p>
+                  )}
                 <button
-                  key={s.id}
                   onClick={() => navigate(`/workflow/${kind}/${i}`)}
                   className={`shrink-0 lg:w-full text-left flex items-center gap-2 px-3 py-2 rounded-xl text-sm transition-colors ${
                     active
@@ -243,6 +368,7 @@ export default function ChecklistWorkflow() {
                     {shortLabel(s.text)}
                   </span>
                 </button>
+                </Fragment>
               );
             })}
           </div>
@@ -317,38 +443,45 @@ export default function ChecklistWorkflow() {
         </section>
       )}
 
-      {/* Sub-checklist */}
+      {/* Sub-checklist — clickable shortcut buttons that open their link(s) */}
       {subItems.length > 0 && (
         <section className="rounded-3xl border border-card-border bg-card p-5 sm:p-6 mb-5">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-xs font-black uppercase tracking-[0.18em] text-muted">
-              Sub-checklist &middot; {subDone}/{subTotal}
-            </h2>
-            {subDone > 0 && (
-              <button onClick={resetSubs} className="text-xs font-bold text-muted hover:text-primary px-2 py-1.5 rounded-lg hover:bg-surface-alt cursor-pointer inline-flex items-center gap-1">
-                <RotateCcw size={12} /> Reset
-              </button>
-            )}
-          </div>
-          <div className="space-y-1.5">
-            {subItems.map((s) => (
-              <div
-                key={s.id}
-                onClick={() => toggleSub(s.id)}
-                className={`flex items-start gap-3 rounded-2xl px-3 py-3 cursor-pointer ${
-                  s.done ? 'bg-emerald-500/8' : 'hover:bg-surface-alt'
-                }`}
-              >
-                <div className={`mt-0.5 w-6 h-6 rounded-lg flex items-center justify-center shrink-0 ${
-                  s.done ? 'bg-emerald-400 text-emerald-950' : 'border-2 border-card-border bg-surface-alt'
-                }`}>
-                  {s.done && <Check size={14} strokeWidth={3.5} />}
+          <h2 className="text-xs font-black uppercase tracking-[0.18em] text-muted mb-3">Shortcuts</h2>
+          <div className="space-y-2">
+            {subItems.map((s) => {
+              const links = s.links || [];
+              const primary = links[0] || null;
+              const onClick = (e) => {
+                if (!primary) return;
+                e.preventDefault();
+                if (primary.url?.startsWith('/')) navigate(primary.url);
+                else window.open(primary.url, '_blank', 'noopener,noreferrer');
+              };
+              return (
+                <div key={s.id} className="rounded-2xl border border-card-border bg-surface-alt hover:bg-surface-strong overflow-hidden">
+                  <button
+                    onClick={onClick}
+                    disabled={!primary}
+                    className={`w-full flex items-center gap-3 px-4 py-3 text-left ${primary ? 'cursor-pointer' : 'cursor-default'}`}
+                  >
+                    <ExternalLink size={16} className={`shrink-0 ${primary ? 'text-brand' : 'text-muted'}`} />
+                    <span className="flex-1 text-sm sm:text-base font-bold text-primary">{s.text}</span>
+                    {!primary && <span className="text-[10px] font-bold text-muted uppercase tracking-wider">no link</span>}
+                  </button>
+                  {links.length > 1 && (
+                    <div className="flex flex-wrap gap-1.5 px-4 pb-3 -mt-1">
+                      {links.slice(1).map((l) => {
+                        const isInternal = l.url?.startsWith('/');
+                        const cls = "inline-flex items-center gap-1.5 text-xs font-black text-brand bg-brand/10 hover:bg-brand/15 px-2.5 py-1 rounded-xl";
+                        return isInternal
+                          ? <Link key={l.id} to={l.url} className={cls}><ExternalLink size={11} />{l.label}</Link>
+                          : <a key={l.id} href={l.url} target="_blank" rel="noopener noreferrer" className={cls}><ExternalLink size={11} />{l.label}</a>;
+                      })}
+                    </div>
+                  )}
                 </div>
-                <span className={`flex-1 text-sm sm:text-base font-bold ${s.done ? 'text-muted line-through' : 'text-primary'}`}>
-                  {s.text}
-                </span>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </section>
       )}
@@ -386,7 +519,7 @@ export default function ChecklistWorkflow() {
             onClose={() => setShowFullEditor(false)}
             items={list}
             setItems={setList}
-            title={kind === 'end' ? 'Edit End of Day' : 'Edit Start of Day'}
+            title={kind === 'end' ? 'Edit End of Day' : kind === 'team-start' ? 'Edit Team Open' : kind === 'team-end' ? 'Edit Team Close' : 'Edit Start of Day'}
             kind={kind}
           />
         </Suspense>

@@ -170,6 +170,16 @@ export default function TeamMemberDetail() {
   const isTrial = !!trialApp;
   const name = memberData?.name || trialApp?.data?.name || [trialApp?.data?.first_name, trialApp?.data?.last_name].filter(Boolean).join(' ') || 'Applicant';
   const playbooks = memberData?.playbooks || (isTrial ? ['service'] : []);
+  const tools = memberData?.tools || {};
+  const toggleTool = (key) => {
+    setPermissions((prev) => ({
+      ...prev,
+      [email]: {
+        ...prev[email],
+        tools: { ...(prev[email]?.tools || {}), [key]: !(prev[email]?.tools?.[key]) },
+      },
+    }));
+  };
   const role = memberData?.role || 'Team Member';
   const phone = memberData?.phone || trialApp?.data?.phone || '';
   const payRate = memberData?.payRate ?? trialApp?.onboarding?.trialPayRate ?? null;
@@ -532,6 +542,35 @@ export default function TeamMemberDetail() {
                 </button>
               </>
             )}
+          </div>
+        </div>
+
+        {/* Tools access (Door Hangers etc.) */}
+        <div className="mt-4 pt-4 border-t border-border-subtle">
+          <label className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-muted mb-2">
+            <CheckSquare size={11} /> Tools Access
+          </label>
+          <div className="space-y-1.5">
+            {[
+              { key: 'doorHangers', label: 'Door Hangers', description: 'Print marketing tool — drop zones, track routes' },
+            ].map((tool) => {
+              const enabled = !!tools[tool.key];
+              return (
+                <div key={tool.key} className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-surface hover:bg-surface-alt">
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold text-primary">{tool.label}</p>
+                    <p className="text-[11px] text-muted truncate">{tool.description}</p>
+                  </div>
+                  <button
+                    onClick={() => toggleTool(tool.key)}
+                    className={`relative inline-flex shrink-0 items-center w-11 h-6 rounded-full transition-colors cursor-pointer ${enabled ? 'bg-emerald-500' : 'bg-surface-strong'}`}
+                    aria-pressed={enabled}
+                  >
+                    <span className={`absolute w-5 h-5 rounded-full bg-card shadow transition-transform ${enabled ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                  </button>
+                </div>
+              );
+            })}
           </div>
         </div>
 

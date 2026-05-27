@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback, Fragment } from 'react';
 import { MapContainer, TileLayer, Polyline, CircleMarker, Tooltip, Polygon, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { Play, Square, MapPin, Trash2, Package, Pause, PlayCircle, Tag, Signal, X, User, Plus, Pencil, MapIcon, Check, UserCircle } from 'lucide-react';
+import { Play, Square, MapPin, Trash2, Package, Pause, PlayCircle, Tag, Signal, X, User, Plus, Pencil, MapIcon, Check, UserCircle, Navigation, HelpCircle, ChevronDown } from 'lucide-react';
 import { useAppStore } from '../store/AppStoreContext';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -15,7 +15,16 @@ function uid() { return Math.random().toString(36).slice(2, 9); }
 
 // Persistent active-trip snapshot. Survives page refresh, nav-away, accidental tab close.
 function loadActive() {
-  try { return JSON.parse(localStorage.getItem(ACTIVE_TRIP_KEY) || 'null'); } catch { return null; }
+  try {
+    const state = JSON.parse(localStorage.getItem(ACTIVE_TRIP_KEY) || 'null');
+    if (!state) return null;
+    // Discard "active" trips older than 6 hours — likely a forgotten session.
+    if (state.startedAt && Date.now() - state.startedAt > 6 * 60 * 60 * 1000) {
+      localStorage.removeItem(ACTIVE_TRIP_KEY);
+      return null;
+    }
+    return state;
+  } catch { return null; }
 }
 function saveActive(state) {
   try {
@@ -144,6 +153,17 @@ async function countBuildingsInPolygon(polygon) {
 }
 
 // Center on rep's current location while a trip is active.
+// One-shot zoom-to-trip helper. Fires whenever `token` increments.
+function FitToTrip({ token, path }) {
+  const map = useMap();
+  useEffect(() => {
+    if (!path || path.length < 2) return;
+    map.fitBounds(L.latLngBounds(path), { padding: [40, 40], maxZoom: 18, animate: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
+  return null;
+}
+
 function FollowMe({ point }) {
   const map = useMap();
   useEffect(() => {
@@ -158,7 +178,7 @@ export default function PrintHangers() {
   const setTrips = useAppStore((s) => s.setHangerTrips);
   const areas = useAppStore((s) => s.hangerAreas) || [];
   const setAreas = useAppStore((s) => s.setHangerAreas);
-  const { user, currentUser } = useAuth();
+  const { user, currentUser, ownerMode } = useAuth();
   // Whoever's signed in gets attached as the person who did the hanging.
   const doneBy = currentUser || user?.email || null;
 
@@ -182,8 +202,13 @@ export default function PrintHangers() {
   const [showAreaModal, setShowAreaModal] = useState(false);
   const [areaName, setAreaName] = useState('');
   const [areaAssignee, setAreaAssignee] = useState('');
+  const [areaScheduledFor, setAreaScheduledFor] = useState(() => new Date().toLocaleDateString('en-CA'));
   const [selectedAreaId, setSelectedAreaId] = useState(null);
   const [buildingCount, setBuildingCount] = useState(null); // null=loading, number=done, false=error
+  const [recenterToken, setRecenterToken] = useState(0); // bumped to trigger a one-shot fit-to-selected-trip
+  // Everyone sees all zones on the map (spatial context matters when walking).
+  // The "Today's Assigned Zones" banner at the top calls out what's theirs.
+  const [showOnlyMine, setShowOnlyMine] = useState(false);
   const [locationPermission, setLocationPermission] = useState('unknown'); // unknown | granted | prompt | denied
 
   // Check geolocation permission state on mount + react to changes.
@@ -360,12 +385,17 @@ export default function PrintHangers() {
       id: activeTripId,
       startedAt: startedAt || Date.now() - livePath.length * 1000,
       endedAt: Date.now(),
-      path: livePath,
+      // Clone the path so subsequent state resets can't accidentally mutate it.
+      path: livePath.map((p) => [p[0], p[1]]),
       packs: finalPacks,
       doneBy: doneBy || null,
     };
     setTrips([...(trips || []), newTrip]);
     discardActive();
+    // Auto-select the saved trip so its line highlights and the summary panel
+    // appears — gives the rep instant confirmation of "here's what you walked."
+    setSelectedTripId(newTrip.id);
+    setRecenterToken((n) => n + 1);
   }, [packs, doneBy, activeTripId, startedAt, livePath, trips, setTrips, discardActive]);
 
   const deleteTrip = (id) => {
@@ -378,11 +408,69 @@ export default function PrintHangers() {
     const pts = [];
     for (const t of trips) pts.push(...(t.path || []));
     for (const p of livePath) pts.push(p);
+    // Include zone polygon vertices so the map fits to areas even with no trips.
+    for (const a of areas) {
+      if (Array.isArray(a.polygon)) pts.push(...a.polygon);
+    }
     return pts;
-  }, [trips, livePath]);
+  }, [trips, livePath, areas]);
 
   const selectedTrip = selectedTripId ? trips.find((t) => t.id === selectedTripId) : null;
   const selectedArea = selectedAreaId ? areas.find((a) => a.id === selectedAreaId) : null;
+
+  // Today's date in YYYY-MM-DD local. Used to highlight zones assigned for today.
+  const todayStr = new Date().toLocaleDateString('en-CA');
+  const myEmail = (user?.email || '').toLowerCase();
+  const isMine = (a) => {
+    if (!a.assignedTo) return false;
+    const t = a.assignedTo.toLowerCase();
+    return t === myEmail || t === (currentUser || '').toLowerCase();
+  };
+  const todaysZones = areas.filter((a) => a.scheduledFor === todayStr && (ownerMode || isMine(a)));
+  const incompleteToday = todaysZones.filter((a) => !a.completed);
+
+  // Find nearest incomplete zone (by polygon centroid) and open directions to it.
+  const [navStatus, setNavStatus] = useState(null); // null | 'finding' | 'error'
+  // Candidate zones in priority order:
+  //   1. Incomplete + assigned to me + today
+  //   2. Incomplete + assigned to me + any date
+  //   3. Incomplete + any (so the button still works during testing)
+  const closestCandidates = (() => {
+    const mineToday = areas.filter((a) => !a.completed && a.scheduledFor === todayStr && (ownerMode || isMine(a)));
+    if (mineToday.length) return mineToday;
+    const mineAny = areas.filter((a) => !a.completed && (ownerMode || isMine(a)));
+    if (mineAny.length) return mineAny;
+    return areas.filter((a) => !a.completed);
+  })();
+  const goToClosestZone = () => {
+    if (closestCandidates.length === 0) return;
+    if (!navigator.geolocation) {
+      const a = closestCandidates[0];
+      const c = polygonCentroid(a.polygon);
+      if (c) openDirections(c[0], c[1], a.name);
+      return;
+    }
+    setNavStatus('finding');
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const me = [pos.coords.latitude, pos.coords.longitude];
+        let best = null, bestDist = Infinity;
+        for (const a of closestCandidates) {
+          const edge = closestPointOnPolygonEdge(a.polygon, me);
+          if (!edge) continue;
+          const d = haversine(me, edge);
+          if (d < bestDist) { bestDist = d; best = { area: a, dest: edge }; }
+        }
+        setNavStatus(null);
+        if (best) openDirections(best.dest[0], best.dest[1], best.area.name);
+      },
+      () => { setNavStatus('error'); setTimeout(() => setNavStatus(null), 3000); },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
+  const visibleAreas = showOnlyMine
+    ? areas.filter((a) => a.scheduledFor === todayStr && (ownerMode || isMine(a)))
+    : areas;
 
   const startDrawing = () => {
     setDraftPolygon([]);
@@ -409,6 +497,7 @@ export default function PrintHangers() {
       name: areaName.trim() || `Area ${areas.length + 1}`,
       polygon: draftPolygon,
       assignedTo: areaAssignee.trim() || null,
+      scheduledFor: areaScheduledFor || null,
       houseCount: typeof buildingCount === 'number' ? buildingCount : null,
       houseCountSource: buildingSource,
       createdAt: Date.now(),
@@ -419,6 +508,7 @@ export default function PrintHangers() {
     setDraftPolygon([]);
     setAreaName('');
     setAreaAssignee('');
+    setAreaScheduledFor(new Date().toLocaleDateString('en-CA'));
   };
   const deleteArea = (id) => {
     if (!confirm('Delete this area?')) return;
@@ -449,36 +539,6 @@ export default function PrintHangers() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedAreaId]);
 
-  // 12-week histogram of hangers dropped.
-  const weeks = useMemo(() => {
-    const now = new Date();
-    const start = new Date(now);
-    start.setHours(0, 0, 0, 0);
-    const day = start.getDay();
-    const diff = day === 0 ? -6 : 1 - day;
-    start.setDate(start.getDate() + diff); // Monday of this week
-    const buckets = [];
-    for (let i = 11; i >= 0; i--) {
-      const s = new Date(start);
-      s.setDate(s.getDate() - i * 7);
-      const e = new Date(s);
-      e.setDate(e.getDate() + 7);
-      buckets.push({ start: s.getTime(), end: e.getTime(), packs: 0, trips: 0, label: `${s.getMonth() + 1}/${s.getDate()}` });
-    }
-    for (const t of trips) {
-      const when = t.endedAt || t.startedAt || 0;
-      for (const b of buckets) {
-        if (when >= b.start && when < b.end) {
-          b.packs += t.packs || 0;
-          b.trips++;
-          break;
-        }
-      }
-    }
-    return buckets;
-  }, [trips]);
-  const weekMax = Math.max(1, ...weeks.map((w) => w.packs));
-
   return (
     <div className="pb-24 space-y-5">
       {/* Header */}
@@ -495,32 +555,129 @@ export default function PrintHangers() {
         )}
       </div>
 
-      {/* 12-week hangers histogram */}
-      <div className="rounded-3xl border border-card-border bg-card p-5 sm:p-6">
-        <div className="flex items-center justify-between mb-4">
-          <p className="text-[11px] font-black uppercase tracking-[0.18em] text-tertiary">Hangers per week · last 12 weeks</p>
-          <p className="text-xs font-bold text-tertiary">{trips.reduce((s, t) => s + (t.packs || 0), 0)} all-time</p>
+      {/* Today's zones banner — what the rep should be doing right now */}
+      {todaysZones.length > 0 && !isTracking && (
+        <div className="rounded-3xl border-2 border-emerald-400 bg-emerald-50 p-4 sm:p-5">
+          <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
+            <div>
+              <p className="text-[11px] font-black uppercase tracking-[0.18em] text-emerald-700">
+                {ownerMode ? "Today's Assigned Zones" : 'Your Zones Today'}
+              </p>
+              <p className="text-base font-black text-emerald-900 mt-0.5">
+                {incompleteToday.length} of {todaysZones.length} left · {todaysZones.reduce((s, a) => s + (a.houseCount || 0), 0)} houses total
+              </p>
+            </div>
+            {incompleteToday.length > 0 && (
+              <button
+                onClick={goToClosestZone}
+                disabled={navStatus === 'finding'}
+                className="inline-flex items-center gap-2 bg-emerald-600 text-white font-black uppercase tracking-wider text-sm px-4 py-3 rounded-2xl cursor-pointer hover:bg-emerald-700 disabled:opacity-50"
+              >
+                <Navigation size={16} />
+                {navStatus === 'finding' ? 'Finding…' : navStatus === 'error' ? 'Location blocked' : 'Go to Closest'}
+              </button>
+            )}
+          </div>
+          <ul className="space-y-1.5">
+            {todaysZones.map((a) => {
+              const done = !!a.completed;
+              return (
+                <li key={a.id}>
+                  <div className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-2xl border ${done ? 'bg-emerald-100/60 border-emerald-300' : 'bg-card border-emerald-200 hover:bg-surface-alt'}`}>
+                    <button onClick={() => setSelectedAreaId(a.id)} className="flex-1 text-left flex items-center gap-3 min-w-0 cursor-pointer">
+                      {done
+                        ? <Check size={16} className="text-emerald-700 shrink-0" />
+                        : <MapIcon size={16} className="text-emerald-700 shrink-0" />}
+                      <div className="min-w-0 flex-1">
+                        <p className={`font-bold text-primary truncate ${done ? 'line-through opacity-60' : ''}`}>{a.name}</p>
+                        <p className="text-[11px] font-bold text-tertiary">
+                          {a.assignedTo || 'Unassigned'}{a.houseCount != null ? ` · ~${a.houseCount} houses` : ''}
+                        </p>
+                      </div>
+                    </button>
+                    {!done ? (
+                      <>
+                        <button
+                          onClick={() => {
+                            // Drive to the closest edge of the zone (if we have GPS),
+                            // otherwise fall back to centroid.
+                            if (navigator.geolocation) {
+                              navigator.geolocation.getCurrentPosition(
+                                (pos) => {
+                                  const edge = closestPointOnPolygonEdge(a.polygon, [pos.coords.latitude, pos.coords.longitude]);
+                                  if (edge) openDirections(edge[0], edge[1], a.name);
+                                  else {
+                                    const c = polygonCentroid(a.polygon);
+                                    if (c) openDirections(c[0], c[1], a.name);
+                                  }
+                                },
+                                () => {
+                                  const c = polygonCentroid(a.polygon);
+                                  if (c) openDirections(c[0], c[1], a.name);
+                                },
+                                { enableHighAccuracy: true, timeout: 8000 }
+                              );
+                            } else {
+                              const c = polygonCentroid(a.polygon);
+                              if (c) openDirections(c[0], c[1], a.name);
+                            }
+                          }}
+                          className="shrink-0 inline-flex items-center gap-1 text-xs font-black uppercase tracking-wider text-emerald-700 hover:text-emerald-900 px-2 py-1 rounded-lg hover:bg-emerald-100 cursor-pointer"
+                          title="Get directions to zone edge"
+                        >
+                          <Navigation size={13} /> Drive
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (confirm(`Mark "${a.name}" as done?`)) {
+                              setAreas(areas.map((x) => x.id === a.id ? { ...x, completed: true, completedAt: Date.now(), completedBy: doneBy } : x));
+                            }
+                          }}
+                          className="shrink-0 inline-flex items-center gap-1 text-xs font-black uppercase tracking-wider text-tertiary hover:text-emerald-700 px-2 py-1 rounded-lg hover:bg-emerald-100 cursor-pointer"
+                          title="Mark zone done"
+                        >
+                          <Check size={13} /> Done
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          if (confirm(`Reopen "${a.name}"? Crew will see it as not done.`)) {
+                            setAreas(areas.map((x) => x.id === a.id ? { ...x, completed: false, completedAt: null, completedBy: null } : x));
+                          }
+                        }}
+                        className="shrink-0 inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-tertiary hover:text-primary px-2 py-1 rounded-lg hover:bg-surface-alt cursor-pointer"
+                        title="Mark not done"
+                      >
+                        Undo
+                      </button>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
         </div>
-        <div className="flex items-end gap-1.5 h-32">
-          {weeks.map((w, i) => {
-            const isCurrent = i === weeks.length - 1;
-            const h = Math.max(4, Math.round((w.packs / weekMax) * 120));
-            return (
-              <div key={i} className="flex-1 flex flex-col items-center gap-1 group">
-                <span className={`text-[10px] font-bold ${w.packs > 0 ? 'opacity-100' : 'opacity-0 group-hover:opacity-60'} text-tertiary`}>
-                  {w.packs}
-                </span>
-                <div
-                  className={`w-full rounded-md ${isCurrent ? 'bg-primary' : 'bg-surface-alt border border-card-border'}`}
-                  style={{ height: `${h}px` }}
-                  title={`Week of ${w.label}: ${w.packs} hangers · ${w.trips} trip${w.trips === 1 ? '' : 's'}`}
-                />
-                <span className="text-[9px] font-bold text-tertiary truncate">{w.label}</span>
-              </div>
-            );
-          })}
+      )}
+
+      {/* Field Guide — always-visible answers to common questions */}
+      {!ownerMode && (
+        <FieldGuide />
+      )}
+
+      {/* Filter toggle */}
+      {ownerMode && (
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowOnlyMine(!showOnlyMine)}
+            className={`inline-flex items-center gap-2 text-xs font-black uppercase tracking-wider px-3 py-2 rounded-xl cursor-pointer ${
+              showOnlyMine ? 'bg-primary text-card' : 'bg-surface-alt text-tertiary hover:text-primary'
+            }`}
+          >
+            {showOnlyMine ? 'Showing today only' : 'Showing all zones'}
+          </button>
         </div>
-      </div>
+      )}
 
       {/* Map */}
       <div className="rounded-3xl overflow-hidden border border-card-border bg-card" style={{ height: 480 }}>
@@ -537,22 +694,30 @@ export default function PrintHangers() {
             url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png"
             maxZoom={19}
           />
-          {/* All past trips — muted green; selected one highlighted */}
+          {/* All past trips — bright green, double-stroked so they read clearly on satellite */}
           {trips.map((t) => {
             const isSelected = t.id === selectedTripId;
+            if (!t.path || t.path.length < 2) return null;
             return (
-              <Polyline
-                key={t.id}
-                positions={t.path || []}
-                pathOptions={{
-                  color: isSelected ? '#16a34a' : '#15803d',
-                  weight: isSelected ? 7 : 5,
-                  opacity: isSelected ? 1 : (selectedTripId ? 0.25 : 0.7),
-                }}
-                eventHandlers={{ click: () => setSelectedTripId(t.id) }}
-              >
-                <Tooltip sticky>{formatDefaultName(t.startedAt)} · {t.packs || 0} hangers · {formatDuration((t.endedAt || 0) - (t.startedAt || 0))}{t.doneBy ? ` · ${t.doneBy}` : ''}</Tooltip>
-              </Polyline>
+              <Fragment key={t.id}>
+                {/* White halo for contrast on satellite */}
+                <Polyline
+                  positions={t.path}
+                  pathOptions={{ color: '#ffffff', weight: isSelected ? 10 : 8, opacity: 0.85 }}
+                  interactive={false}
+                />
+                <Polyline
+                  positions={t.path}
+                  pathOptions={{
+                    color: isSelected ? '#22c55e' : '#16a34a',
+                    weight: isSelected ? 6 : 4,
+                    opacity: isSelected ? 1 : 0.95,
+                  }}
+                  eventHandlers={{ click: () => setSelectedTripId(t.id) }}
+                >
+                  <Tooltip sticky>{formatDefaultName(t.startedAt)} · {t.packs || 0} hangers · {formatDuration((t.endedAt || 0) - (t.startedAt || 0))}{t.doneBy ? ` · ${t.doneBy}` : ''}</Tooltip>
+                </Polyline>
+              </Fragment>
             );
           })}
           {/* Live trip */}
@@ -564,23 +729,30 @@ export default function PrintHangers() {
           )}
           <FitBounds allPoints={allPoints} active={isTracking} />
           {isTracking && currentPoint && <FollowMe point={currentPoint} />}
+          <FitToTrip token={recenterToken} path={selectedTrip?.path} />
 
-          {/* Saved areas */}
-          {areas.map((a) => {
+          {/* Saved areas — today's zones get bright green, others stay dim blue */}
+          {visibleAreas.map((a) => {
             const isSel = a.id === selectedAreaId;
+            const isToday = a.scheduledFor === todayStr;
+            const color = isToday ? '#16a34a' : '#3b82f6';
             return (
               <Polygon
                 key={a.id}
                 positions={a.polygon}
                 pathOptions={{
-                  color: isSel ? '#2563eb' : '#3b82f6',
-                  weight: isSel ? 3 : 2,
-                  fillOpacity: isSel ? 0.25 : 0.12,
-                  fillColor: '#3b82f6',
+                  color: isSel ? (isToday ? '#15803d' : '#2563eb') : color,
+                  weight: isSel ? 3 : isToday ? 3 : 2,
+                  fillOpacity: isSel ? 0.3 : isToday ? 0.22 : 0.08,
+                  fillColor: color,
                 }}
                 eventHandlers={{ click: () => setSelectedAreaId(a.id) }}
               >
-                <Tooltip sticky>{a.name}{a.assignedTo ? ` · ${a.assignedTo}` : ''}</Tooltip>
+                <Tooltip sticky>
+                  {a.name}
+                  {a.assignedTo ? ` · ${a.assignedTo}` : ''}
+                  {a.scheduledFor ? ` · ${a.scheduledFor}` : ''}
+                </Tooltip>
               </Polygon>
             );
           })}
@@ -605,8 +777,8 @@ export default function PrintHangers() {
         </MapContainer>
       </div>
 
-      {/* Area drawing controls */}
-      {!isTracking && (
+      {/* Area drawing controls — owner only (only owner assigns zones to crew) */}
+      {!isTracking && ownerMode && (
         <div className="rounded-2xl border border-card-border bg-card p-4 flex items-center justify-between gap-3 flex-wrap">
           <div className="min-w-0">
             <p className="text-[11px] font-black uppercase tracking-[0.18em] text-tertiary">Territories</p>
@@ -661,6 +833,11 @@ export default function PrintHangers() {
             <p className="text-lg font-black text-primary truncate">{selectedArea.name}</p>
             <p className="text-xs font-bold text-tertiary mt-0.5 inline-flex items-center gap-1 flex-wrap">
               <UserCircle size={12} /> {selectedArea.assignedTo || 'Unassigned'}
+              {selectedArea.scheduledFor && (
+                <span className={`ml-2 ${selectedArea.scheduledFor === todayStr ? 'text-emerald-700 font-black' : ''}`}>
+                  · {selectedArea.scheduledFor === todayStr ? 'TODAY' : selectedArea.scheduledFor}
+                </span>
+              )}
               {selectedArea.houseCount != null && (
                 <>
                   <span className="ml-2 text-primary">
@@ -720,17 +897,30 @@ export default function PrintHangers() {
       <div className="sticky bottom-2" style={{ zIndex: 1000 }}>
         <div className="rounded-3xl border border-card-border bg-card p-3 sm:p-4 shadow-lg flex items-center gap-3 flex-wrap">
           {!isTracking ? (
-            <button
-              onClick={startTrip}
-              disabled={locationPermission === 'denied'}
-              className={`flex-1 inline-flex items-center justify-center gap-2 font-black uppercase tracking-wider text-base px-6 py-4 rounded-2xl ${
-                locationPermission === 'denied'
-                  ? 'bg-surface-alt text-muted cursor-not-allowed'
-                  : 'bg-primary text-card cursor-pointer hover:brightness-110'
-              }`}
-            >
-              <Play size={20} fill="currentColor" /> Start Trip
-            </button>
+            <>
+              {closestCandidates.length > 0 && (
+                <button
+                  onClick={goToClosestZone}
+                  disabled={navStatus === 'finding'}
+                  className="inline-flex items-center justify-center gap-2 bg-emerald-600 text-white font-black uppercase tracking-wider text-sm px-4 py-4 rounded-2xl cursor-pointer hover:bg-emerald-700 disabled:opacity-50"
+                  title="Drive to the closest zone you haven't done"
+                >
+                  <Navigation size={18} />
+                  <span className="hidden sm:inline">{navStatus === 'finding' ? 'Finding…' : navStatus === 'error' ? 'Blocked' : 'Closest'}</span>
+                </button>
+              )}
+              <button
+                onClick={startTrip}
+                disabled={locationPermission === 'denied'}
+                className={`flex-1 inline-flex items-center justify-center gap-2 font-black uppercase tracking-wider text-base px-6 py-4 rounded-2xl ${
+                  locationPermission === 'denied'
+                    ? 'bg-surface-alt text-muted cursor-not-allowed'
+                    : 'bg-primary text-card cursor-pointer hover:brightness-110'
+                }`}
+              >
+                <Play size={20} fill="currentColor" /> Start Trip
+              </button>
+            </>
           ) : (
             <button
               onClick={requestEnd}
@@ -792,41 +982,6 @@ export default function PrintHangers() {
         </div>
       )}
 
-      {/* Trip history */}
-      {trips.length > 0 && (
-        <section className="rounded-3xl border border-card-border bg-card p-5">
-          <h2 className="text-xs font-black uppercase tracking-[0.18em] text-tertiary mb-3">Trip History</h2>
-          <ul className="divide-y divide-card-border">
-            {[...trips].reverse().map((t) => {
-              const isSel = t.id === selectedTripId;
-              return (
-                <li key={t.id} className={`py-3 px-2 flex items-center justify-between gap-3 cursor-pointer rounded-xl ${isSel ? 'bg-surface-alt' : 'hover:bg-surface-alt'}`} onClick={() => setSelectedTripId(t.id)}>
-                  <div className="min-w-0">
-                    <p className="font-bold text-primary truncate">{formatDefaultName(t.startedAt)}</p>
-                    {(() => {
-                      const dur = (t.endedAt || 0) - (t.startedAt || 0);
-                      const pace = hangersPerHour(t.packs, dur);
-                      return (
-                        <p className="text-xs font-semibold text-tertiary">
-                          {(pathDistance(t.path || []) / 1609.34).toFixed(2)} mi
-                          {' · '}{t.packs || 0} hangers
-                          {' · '}{formatDuration(dur)}
-                          {pace ? ` · ${pace}/hr` : ''}
-                          {t.doneBy ? ` · ${t.doneBy}` : ''}
-                        </p>
-                      );
-                    })()}
-                  </div>
-                  <button onClick={(e) => { e.stopPropagation(); deleteTrip(t.id); }} className="text-tertiary hover:text-rose-600 p-2 rounded-lg cursor-pointer shrink-0">
-                    <Trash2 size={16} />
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        </section>
-      )}
-
       {/* Save-area modal */}
       {showAreaModal && (
         <div className="fixed inset-0 flex items-center justify-center p-4 bg-black/40" style={{ zIndex: 9999 }}>
@@ -858,12 +1013,20 @@ export default function PrintHangers() {
               className="w-full rounded-2xl bg-surface-alt border border-card-border px-4 py-3 text-base font-medium text-primary placeholder:text-muted focus:outline-none focus:border-brand mt-1 mb-3"
             />
 
-            <label className="text-[11px] font-black uppercase tracking-wider text-tertiary">Assigned to (optional)</label>
+            <label className="text-[11px] font-black uppercase tracking-wider text-tertiary">Assigned to</label>
             <input
               value={areaAssignee}
               onChange={(e) => setAreaAssignee(e.target.value)}
               placeholder={doneBy || 'e.g. Ethan'}
-              className="w-full rounded-2xl bg-surface-alt border border-card-border px-4 py-3 text-base font-medium text-primary placeholder:text-muted focus:outline-none focus:border-brand mt-1 mb-5"
+              className="w-full rounded-2xl bg-surface-alt border border-card-border px-4 py-3 text-base font-medium text-primary placeholder:text-muted focus:outline-none focus:border-brand mt-1 mb-3"
+            />
+
+            <label className="text-[11px] font-black uppercase tracking-wider text-tertiary">Day to do it</label>
+            <input
+              type="date"
+              value={areaScheduledFor}
+              onChange={(e) => setAreaScheduledFor(e.target.value)}
+              className="w-full rounded-2xl bg-surface-alt border border-card-border px-4 py-3 text-base font-medium text-primary focus:outline-none focus:border-brand mt-1 mb-5"
             />
 
             <div className="flex gap-2">
@@ -969,6 +1132,126 @@ function MiniStat({ label, value }) {
       <p className="text-base font-black text-primary mt-0.5">{value}</p>
     </div>
   );
+}
+
+function FieldGuide() {
+  const [open, setOpen] = useState(null); // index of expanded section
+  const sections = [
+    {
+      q: '⚠️ PHONE TRACKING — READ THIS FIRST',
+      critical: true,
+      a: "This app tracks your walk via GPS. If your phone screen turns OFF or you switch to another app, **tracking STOPS** — your route disappears and you won't get credit for hangers dropped.\n\nWhile walking, you MUST:\n• Keep the phone awake — the app keeps the screen on, but don't manually lock it.\n• Turn brightness DOWN as low as you can still see, to save battery.\n• Carry a backup battery / charger — GPS for 2+ hours will drain ~25% of your battery.\n• Keep Boost in the foreground tab — don't open Instagram, Maps, etc. mid-trip.\n• If you must answer a call or check Maps, finish the trip first so progress is saved.\n\nWe're working on a real app that tracks in the background. For now, this is the rule.",
+    },
+    {
+      q: 'Where do I park?',
+      a: "On the public street curb — it's a public road and you have the right to be there. Don't block driveways, mailboxes, or trash bins. Be respectful: pull all the way over, don't idle in front of someone's house with the engine running.",
+    },
+    {
+      q: '"No Soliciting" signs — do I skip those houses?',
+      a: "No — you're canvassing, not soliciting. Soliciting = trying to sell at the door. Canvassing = leaving marketing material and walking away. Many of our best recurring clients have 'No Soliciting' signs. Leave the hanger. Don't knock.",
+    },
+    {
+      q: 'What if someone asks what I\'m doing?',
+      a: "Smile. \"Just putting out hangers for Hey Jude's Lawn Care. Do you need help with ____?\" (whatever the hanger is about — lawn maintenance, leaves, mulch, etc.) If yes — tell them to scan the QR code on the hanger and we'll reach out as soon as they put in their info. Never argue, never try to close on the spot.",
+    },
+    {
+      q: 'There\'s a camera on the door?',
+      a: "Smile at it. Wave if you want. You're on tape — make it look professional. Don't look at your phone. Don't touch the door handle. Hang the hanger, step back, walk away.",
+    },
+    {
+      q: 'Someone confronts me / is angry?',
+      a: "\"Sorry to bother you. I'll get out of your way. Have a great day.\" Do not argue. Walk away. Tap **Mark Address** in the app — they go on the Do Not Market list and we won't hit them again.",
+    },
+    {
+      q: 'I need to use a bathroom?',
+      a: 'Walk back to your vehicle and drive to the nearest gas station, fast food, or grocery store. End the trip in the app first so we know you stopped.',
+    },
+    {
+      q: 'Walking rules?',
+      a: 'Stay on hard surfaces — sidewalks, driveways, walkways. Do NOT walk across lawns. People take this seriously, and we get complaints about it. Walk up the driveway, hang the bag on the door, walk back down the driveway.',
+    },
+    {
+      q: 'Dog at the house?',
+      a: "If it's loose, skip the house. Don't risk it. If it's behind a fence, you can still hang the bag — just don't go through any gates. If it's a 'beware of dog' sign and no dog visible, use your judgment.",
+    },
+  ];
+  return (
+    <details className="rounded-3xl border border-card-border bg-card overflow-hidden group" open>
+      <summary className="px-5 py-4 cursor-pointer flex items-center justify-between gap-3 list-none">
+        <div className="flex items-center gap-2">
+          <HelpCircle size={16} className="text-primary" />
+          <span className="text-sm font-black uppercase tracking-[0.18em] text-tertiary">Field Guide · Read Before Walking</span>
+        </div>
+        <ChevronDown size={16} className="text-tertiary group-open:rotate-180 transition-transform" />
+      </summary>
+      <div className="px-2 pb-3">
+        {sections.map((s, i) => {
+          const isOpen = open === i;
+          const baseBg = s.critical
+            ? `border-2 border-rose-400 ${isOpen ? 'bg-rose-50' : 'bg-rose-50 hover:bg-rose-100'}`
+            : (isOpen ? 'bg-surface-alt' : 'hover:bg-surface-alt');
+          return (
+            <div key={i} className={`rounded-2xl mb-1 ${baseBg}`}>
+              <button
+                onClick={() => setOpen(isOpen ? null : i)}
+                className="w-full text-left px-4 py-3 flex items-center gap-3 cursor-pointer"
+              >
+                <ChevronDown size={14} className={`${s.critical ? 'text-rose-700' : 'text-tertiary'} transition-transform shrink-0 ${isOpen ? 'rotate-0' : '-rotate-90'}`} />
+                <span className={`flex-1 text-sm font-black ${s.critical ? 'text-rose-900 uppercase tracking-wider' : 'font-bold text-primary'}`}>{s.q}</span>
+              </button>
+              {isOpen && (
+                <div className="px-11 pb-4 -mt-1">
+                  <p className={`text-sm leading-relaxed whitespace-pre-line ${s.critical ? 'text-rose-900 font-semibold' : 'text-primary'}`}>{s.a}</p>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </details>
+  );
+}
+
+function polygonCentroid(polygon) {
+  if (!polygon || polygon.length === 0) return null;
+  let lat = 0, lng = 0;
+  for (const [a, b] of polygon) { lat += a; lng += b; }
+  return [lat / polygon.length, lng / polygon.length];
+}
+
+// Closest point on a line segment [A, B] to point P. All in [lat, lng].
+// Treats lat/lng as planar — fine for small distances (< few miles).
+function closestOnSegment(P, A, B) {
+  const apx = P[0] - A[0], apy = P[1] - A[1];
+  const abx = B[0] - A[0], aby = B[1] - A[1];
+  const ab2 = abx * abx + aby * aby;
+  if (ab2 === 0) return A;
+  let t = (apx * abx + apy * aby) / ab2;
+  t = Math.max(0, Math.min(1, t));
+  return [A[0] + t * abx, A[1] + t * aby];
+}
+
+// Closest point on the polygon's boundary (edges) to the given location.
+function closestPointOnPolygonEdge(polygon, from) {
+  if (!polygon || polygon.length < 2 || !from) return null;
+  let best = null, bestDist = Infinity;
+  for (let i = 0; i < polygon.length; i++) {
+    const a = polygon[i];
+    const b = polygon[(i + 1) % polygon.length];
+    const c = closestOnSegment(from, a, b);
+    const d = haversine(from, c);
+    if (d < bestDist) { bestDist = d; best = c; }
+  }
+  return best;
+}
+
+// Open the user's default maps app with a route from current location to a lat/lng.
+function openDirections(lat, lng, label = '') {
+  const isApple = /iPhone|iPad|iPod|Mac/i.test(navigator.userAgent);
+  const url = isApple
+    ? `http://maps.apple.com/?daddr=${lat},${lng}&dirflg=d${label ? `&q=${encodeURIComponent(label)}` : ''}`
+    : `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`;
+  window.open(url, '_blank', 'noopener,noreferrer');
 }
 
 function haversine([lat1, lng1], [lat2, lng2]) {

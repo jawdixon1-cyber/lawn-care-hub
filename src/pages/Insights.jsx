@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, lazy, Suspense, Fragment } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowUpDown, RefreshCw, Users, TrendingUp, MapPinned, ChevronLeft, ChevronRight, Settings, X, GripVertical } from 'lucide-react';
+import { ArrowUpDown, RefreshCw, Users, TrendingUp, MapPinned, ChevronLeft, ChevronRight, Settings, X, GripVertical, DoorOpen } from 'lucide-react';
 
 const ClientMapInner = lazy(() => import('../components/ClientMapInner'));
 
@@ -99,6 +99,7 @@ const REPORTS = [
   { id: 'leads', path: '/insights/leads', label: 'Leads', description: 'Where your requests come from and how sources perform', icon: MapPinned },
   { id: 'profitability', path: '/insights/profitability-full', label: 'Profitability', description: 'One-off jobs, recurring jobs, labor + contribution margin per job', icon: TrendingUp },
   { id: 'profitability-today', path: '/insights/profitability', label: 'Profitability Today', description: 'Today\'s lawns with labor cost, revenue, and per-crew breakdown', icon: TrendingUp },
+  { id: 'door-hangers', path: '/insights/door-hangers', label: 'Door Hangers', description: 'Hangers/week, pace, per-person breakdown, trip history', icon: DoorOpen },
 ];
 
 export default function Insights() {
